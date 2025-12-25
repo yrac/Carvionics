@@ -935,5 +935,5 @@ For issues, questions, or suggestions:
 
 **Version**: 1.0.0  
 **Last Updated**: December 2025  
-**Maintainer**: [Your Name]  
+**Maintainer**: YRAC  
 **Status**: Active Development
