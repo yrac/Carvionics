@@ -8,6 +8,16 @@
 // Include MCUFRIEND_kbv library for 8-bit parallel TFT
 #include <MCUFRIEND_kbv.h>
 
+// FreeFonts untuk text yang lebih smooth (hanya untuk Mega 2560)
+#if defined(__AVR_ATmega2560__)
+    #define USE_FREEFONT 1
+    #include <Fonts/FreeSansBold18pt7b.h>
+    #include <Fonts/FreeSansBold12pt7b.h>
+    #include <Fonts/FreeSans9pt7b.h>
+#else
+    #define USE_FREEFONT 0
+#endif
+
 /**
  * @class DisplayManager
  * @brief Mengelola inisialisasi TFT dan fungsi drawing primitif
@@ -59,6 +69,7 @@ public:
     // Text drawing
     void setTextColor(Color fg, Color bg = Color::BLACK);
     void setTextSize(uint8_t size);
+    void setFont(const GFXfont *font = nullptr); // nullptr = built-in font
     void setCursor(int16_t x, int16_t y);
     void print(const char *text);
     void printf(const char *format, ...);

@@ -74,8 +74,9 @@ void UIScreen::render(const ECUData &ecu_data,
 void UIScreen::renderHeader_(const ECUData &ecu_data,
                              const SyncManager &sync_mgr,
                              const UIStateMachine &ui_state) {
-    // Header bar: ECU | SYNC | BAT — tanpa background, text lebih besar
+    // Header bar: ECU | SYNC | BAT — dengan garis pemisah
     display_.fillRect(0, HEADER_Y, 320, HEADER_H, DisplayManager::Color::BLACK);
+    display_.drawLine(0, HEADER_Y + HEADER_H - 1, 319, HEADER_Y + HEADER_H - 1, DisplayManager::Color::WHITE);
 
     // Tiga kolom seimbang
     const uint16_t colW = 106; // ~320/3
@@ -224,20 +225,20 @@ void UIScreen::renderControlData_(const ECUData &ecu_data,
 void UIScreen::renderFooter_(const ECUData &ecu_data,
                             const SyncManager &sync_mgr,
                             const UIStateMachine &ui_state) {
-    // Footer: Status atau FUEL x.xx L (placeholder)
-    display_.fillRect(0, FOOTER_Y, 320, FOOTER_H, DisplayManager::Color::DARK_GRAY);
-    display_.drawRect(0, FOOTER_Y, 320, FOOTER_H, DisplayManager::Color::WHITE);
+    // Footer: Status atau FUEL x.xx L (placeholder) — dengan garis pemisah
+    display_.fillRect(0, FOOTER_Y, 320, FOOTER_H, DisplayManager::Color::BLACK);
+    display_.drawLine(0, FOOTER_Y, 319, FOOTER_Y, DisplayManager::Color::WHITE);
 
     display_.setTextSize(1);
-    display_.setTextColor(DisplayManager::Color::WHITE, DisplayManager::Color::DARK_GRAY);
+    display_.setTextColor(DisplayManager::Color::WHITE, DisplayManager::Color::BLACK);
 
     // Status ringkas berdasarkan state
     const char *state_str = getStateName_(sync_mgr.getState());
-    display_.setCursor(6, FOOTER_Y + (FOOTER_H > 16 ? 8 : 4));
+    display_.setCursor(6, FOOTER_Y + 4);
     display_.print(state_str);
 
     // FUEL (jika ada; placeholder)
-    display_.setCursor(220, FOOTER_Y + (FOOTER_H > 16 ? 8 : 4));
+    display_.setCursor(220, FOOTER_Y + 4);
     display_.print("FUEL: --.- L");
 }
 
@@ -255,12 +256,13 @@ void UIScreen::renderSyncLossScreen_(const SyncManager &sync_mgr,
     display_.printCentered(100, "LOSS", DisplayManager::Color::WHITE, bg, 4);
     display_.printCentered(150, "NO ECU", DisplayManager::Color::WHITE, bg, 3);
     
-    // Recovery info (kecil di bawah)
+    // Recovery info — lebih besar dan seimbang
     uint8_t progress = sync_mgr.getRecoveryProgress();
-    display_.setTextSize(1);
+    display_.setTextSize(2);
     display_.setTextColor(DisplayManager::Color::AMBER, bg);
-    display_.setCursor(80, 200);
-    display_.printf("Recovery: %d%%", progress);
+    char recStr[20];
+    snprintf(recStr, sizeof(recStr), "Recovery: %d%%", progress);
+    display_.printCentered(195, recStr, DisplayManager::Color::AMBER, bg, 2);
 }
 
 DisplayManager::Color UIScreen::getStateColor_(SyncManager::SyncState state) const {
@@ -308,12 +310,40 @@ void UIScreen::drawGridCell_(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
     display_.fillRect(x, y, w, h, fill);
 
     // Label (kiri atas, kecil)
+    display_.setFont(nullptr);
     display_.setTextSize(1);
     display_.setTextColor(labelColor, fill);
     display_.setCursor(x + 6, y + 4);
     display_.print(label);
 
-    // Value (besar, centered) — gunakan ukuran yang diminta lalu clamp agar pas
+#if USE_FREEFONT
+    // Mega 2560: gunakan FreeFont untuk smooth rendering
+    uint16_t len = strlen(value);
+    const GFXfont *font = &FreeSansBold12pt7b;
+    
+    if (len <= 3 && w >= 100) {
+        font = &FreeSansBold18pt7b;
+    } else if (len <= 6) {
+        font = &FreeSansBold12pt7b;
+    } else {
+        font = &FreeSans9pt7b;
+    }
+    
+    display_.setFont(font);
+    display_.setTextColor(valueColor, fill);
+    
+    int16_t bx, by;
+    uint16_t bw, bh;
+    display_.getTFT()->getTextBounds(value, 0, 0, &bx, &by, &bw, &bh);
+    
+    uint16_t vx = x + (w > bw ? (w - bw) / 2 : 2);
+    uint16_t vy = y + h / 2 + bh / 2;
+    
+    display_.setCursor(vx, vy);
+    display_.print(value);
+    display_.setFont(nullptr);
+#else
+    // UNO: gunakan built-in font dengan auto-sizing
     uint8_t desired = valueSize;
     uint16_t len = strlen(value);
     uint8_t maxByW = (len > 0) ? (uint8_t)(w / (6 * len)) : desired;
@@ -334,6 +364,7 @@ void UIScreen::drawGridCell_(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
     uint16_t vy = y + (h > charH ? (h - charH) / 2 : 2);
     display_.setCursor(vx, vy);
     display_.print(value);
+#endif
 }
 
 const char* UIScreen::headerEcuStatusText_(const ECUData &ecu_data, const SyncManager &sync_mgr) const {

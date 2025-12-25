@@ -60,6 +60,11 @@ void DisplayManager::setTextSize(uint8_t size) {
     tft_.setTextSize(size);
 }
 
+void DisplayManager::setFont(const GFXfont *font) {
+    if (!initialized_) return;
+    tft_.setFont(font);
+}
+
 void DisplayManager::setCursor(int16_t x, int16_t y) {
     if (!initialized_) return;
     tft_.setCursor(x, y);
