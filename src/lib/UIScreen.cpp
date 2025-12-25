@@ -13,6 +13,30 @@ void UIScreen::render(const ECUData &ecu_data,
         renderSyncLossScreen_(sync_mgr, ui_state);
         return;
     }
+
+    // BOOT: perangkat baru menyala, belum ada data
+    if (ecu_data.lastUpdateMillis == 0) {
+        renderBootSelfTest_();
+        return;
+    }
+
+    // WAIT ECU / NO DATA: belum ada frame valid
+    if (!ecu_data.isDataValid) {
+        renderWaitECU_();
+        return;
+    }
+
+    // SYNCING: data masuk tapi belum sinkron
+    if (!ecu_data.isSynced) {
+        renderSyncing_();
+        return;
+    }
+
+    // RECOVERY: masa pemulihan, tampilkan layar khusus
+    if (sync_mgr.getState() == SyncManager::SyncState::RECOVERY) {
+        renderRecovery_();
+        return;
+    }
     
     // Normal rendering dengan dirty-flag optimization
     if (ui_state.isSliceDirty(UIStateMachine::UISlice::HEADER)) {
@@ -85,8 +109,8 @@ void UIScreen::renderHeader_(const ECUData &ecu_data,
     display_.setCursor(colW*2 + padX + 30, baseY);
     char batStr[16];
     snprintf(batStr, sizeof(batStr), "%.1fV", ecu_data.battery / 1000.0);
-    DisplayManager::Color batCol = (ecu_data.battery < 11000) ? DisplayManager::Color::AMBER : DisplayManager::Color::GREEN;
-    display_.setTextColor(batCol, DisplayManager::Color::DARK_GRAY);
+    // Warna hanya untuk status: nilai tetap putih
+    display_.setTextColor(DisplayManager::Color::WHITE, DisplayManager::Color::DARK_GRAY);
     display_.print(batStr);
 }
 
@@ -97,7 +121,7 @@ void UIScreen::renderRPMField_(const ECUData &ecu_data,
 
     // RPM cell (kiri)
     char rpmStr[16]; snprintf(rpmStr, sizeof(rpmStr), "%d", ecu_data.rpm);
-    DisplayManager::Color valCol1 = valueColorForState_(sync_mgr.getState());
+    DisplayManager::Color valCol1 = DisplayManager::Color::WHITE; // nilai selalu putih
     DisplayManager::Color brdCol1 = borderColorForState_(sync_mgr.getState());
     if (sync_mgr.getState() == SyncManager::SyncState::NO_DATA || !ecu_data.isDataValid) {
         strcpy(rpmStr, "--");
@@ -111,7 +135,7 @@ void UIScreen::renderRPMField_(const ECUData &ecu_data,
 
     // MAP cell (kanan)
     char mapStr[16]; snprintf(mapStr, sizeof(mapStr), "%d", ecu_data.map);
-    DisplayManager::Color valCol2 = valueColorForState_(sync_mgr.getState());
+    DisplayManager::Color valCol2 = DisplayManager::Color::WHITE;
     DisplayManager::Color brdCol2 = borderColorForState_(sync_mgr.getState());
     if (sync_mgr.getState() == SyncManager::SyncState::NO_DATA || !ecu_data.isDataValid) {
         strcpy(mapStr, "--");
@@ -129,30 +153,28 @@ void UIScreen::renderEngineCore_(const ECUData &ecu_data,
     // Row-2: CLT | IAT
     display_.fillRect(0, ENGINE_CORE_Y, 320, ENGINE_CORE_H, DisplayManager::Color::BLACK);
 
-    char cltStr[16]; snprintf(cltStr, sizeof(cltStr), "%d", ecu_data.clt);
-    DisplayManager::Color valCol3 = valueColorForState_(sync_mgr.getState());
-    DisplayManager::Color brdCol3 = borderColorForState_(sync_mgr.getState());
-    if (sync_mgr.getState() == SyncManager::SyncState::NO_DATA || !ecu_data.isDataValid) {
+    char cltStr[16];
+    if (!ecu_data.isDataValid) {
         strcpy(cltStr, "--");
+    } else {
+        annotateClt_(cltStr, sizeof(cltStr), ecu_data.clt, sync_mgr);
     }
     drawGridCell_(0, ENGINE_CORE_Y, LEFT_PANEL_W, ENGINE_CORE_H,
                   "CLT", cltStr,
                   DisplayManager::Color::WHITE,
-                  valCol3,
-                  brdCol3,
+                  DisplayManager::Color::WHITE,
+                  borderColorForState_(sync_mgr.getState()),
                   2);
 
     char iatStr[16]; snprintf(iatStr, sizeof(iatStr), "%d", ecu_data.iat);
-    DisplayManager::Color valCol4 = valueColorForState_(sync_mgr.getState());
-    DisplayManager::Color brdCol4 = borderColorForState_(sync_mgr.getState());
-    if (sync_mgr.getState() == SyncManager::SyncState::NO_DATA || !ecu_data.isDataValid) {
+    if (!ecu_data.isDataValid) {
         strcpy(iatStr, "--");
     }
     drawGridCell_(LEFT_PANEL_W, ENGINE_CORE_Y, RIGHT_PANEL_W, ENGINE_CORE_H,
                   "IAT", iatStr,
                   DisplayManager::Color::WHITE,
-                  valCol4,
-                  brdCol4,
+                  DisplayManager::Color::WHITE,
+                  borderColorForState_(sync_mgr.getState()),
                   2);
 }
 
@@ -161,30 +183,30 @@ void UIScreen::renderControlData_(const ECUData &ecu_data,
     // Row-3: AFR | TPS + Secondary (ADV/DWL/ISC kecil di bawah)
     display_.fillRect(0, CONTROL_DATA_Y, 320, CONTROL_DATA_H, DisplayManager::Color::BLACK);
 
-    char afrStr[16]; snprintf(afrStr, sizeof(afrStr), "%.2f", ecu_data.afr / 100.0);
-    DisplayManager::Color valCol5 = valueColorForState_(sync_mgr.getState());
-    DisplayManager::Color brdCol5 = borderColorForState_(sync_mgr.getState());
-    if (sync_mgr.getState() == SyncManager::SyncState::NO_DATA || !ecu_data.isDataValid) {
+    // AFR
+    char afrStr[16];
+    if (!ecu_data.isDataValid) {
         strcpy(afrStr, "--");
+    } else {
+        annotateAfr_(afrStr, sizeof(afrStr), ecu_data.afr, sync_mgr);
     }
     drawGridCell_(0, CONTROL_DATA_Y, LEFT_PANEL_W, CONTROL_DATA_H - 18,
                   "AFR", afrStr,
                   DisplayManager::Color::WHITE,
-                  valCol5,
-                  brdCol5,
+                  DisplayManager::Color::WHITE,
+                  borderColorForState_(sync_mgr.getState()),
                   2);
 
+    // TPS
     char tpsStr[16]; snprintf(tpsStr, sizeof(tpsStr), "%d", ecu_data.tps);
-    DisplayManager::Color valCol6 = valueColorForState_(sync_mgr.getState());
-    DisplayManager::Color brdCol6 = borderColorForState_(sync_mgr.getState());
-    if (sync_mgr.getState() == SyncManager::SyncState::NO_DATA || !ecu_data.isDataValid) {
+    if (!ecu_data.isDataValid) {
         strcpy(tpsStr, "--");
     }
     drawGridCell_(LEFT_PANEL_W, CONTROL_DATA_Y, RIGHT_PANEL_W, CONTROL_DATA_H - 18,
                   "TPS", tpsStr,
                   DisplayManager::Color::WHITE,
-                  valCol6,
-                  brdCol6,
+                  DisplayManager::Color::WHITE,
+                  borderColorForState_(sync_mgr.getState()),
                   2);
 
     // Secondary line (kecil) di dasar slice
@@ -282,6 +304,7 @@ void UIScreen::drawGridCell_(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
                              const char* label, const char* value,
                              DisplayManager::Color labelColor,
                              DisplayManager::Color valueColor,
+                             DisplayManager::Color borderColor,
                              uint8_t valueSize) {
     // Box
     DisplayManager::Color border = borderColor;
@@ -341,5 +364,87 @@ DisplayManager::Color UIScreen::borderColorForState_(SyncManager::SyncState stat
         case SyncManager::SyncState::NORMAL:
         default:
             return DisplayManager::Color::GREEN;
+    }
+}
+
+// ===== Fullscreen state renderers =====
+void UIScreen::renderBootSelfTest_() {
+    // Simple boot/self-test page
+    display_.fillScreen(DisplayManager::Color::LIGHT_GRAY);
+    display_.printCentered(80, "BOOT", DisplayManager::Color::BLACK, DisplayManager::Color::LIGHT_GRAY, 2);
+    display_.printCentered(110, "SELF TEST", DisplayManager::Color::BLACK, DisplayManager::Color::LIGHT_GRAY, 1);
+}
+
+void UIScreen::renderWaitECU_() {
+    // Waiting for ECU data
+    display_.fillScreen(DisplayManager::Color::BLACK);
+    display_.printCentered(100, "WAIT ECU", DisplayManager::Color::AMBER, DisplayManager::Color::BLACK, 2);
+}
+
+void UIScreen::renderSyncing_() {
+    // Data present but not yet synced
+    display_.fillScreen(DisplayManager::Color::BLACK);
+    display_.printCentered(100, "SYNCING", DisplayManager::Color::CYAN, DisplayManager::Color::BLACK, 2);
+}
+
+void UIScreen::renderRecovery_() {
+    // Recovery stabilization screen
+    display_.fillScreen(DisplayManager::Color::DARK_GRAY);
+    display_.printCentered(100, "RECOVERY", DisplayManager::Color::AMBER, DisplayManager::Color::DARK_GRAY, 2);
+}
+
+// ===== Annotation helpers =====
+void UIScreen::annotateClt_(char *buf, size_t bufSize, int16_t clt, const SyncManager &sync_mgr) const {
+    const auto &th = sync_mgr.getThresholds();
+    // Basic formatting: value in Celsius
+    char tmp[16];
+    snprintf(tmp, sizeof(tmp), "%dC", clt);
+
+    // Determine severity based on thresholds
+    bool caution = false;
+    bool warning = false;
+    if (clt > th.clt_max) {
+        caution = true;
+        if (clt >= th.clt_max + 10) warning = true; // 10C above max => warning
+    } else if (clt < th.clt_min) {
+        caution = true;
+        if (clt <= th.clt_min - 10) warning = true; // 10C below min => warning
+    }
+
+    // Compose annotated string
+    if (warning) {
+        snprintf(buf, bufSize, "%s!!", tmp);
+    } else if (caution) {
+        snprintf(buf, bufSize, "%s!", tmp);
+    } else {
+        snprintf(buf, bufSize, "%s", tmp);
+    }
+}
+
+void UIScreen::annotateAfr_(char *buf, size_t bufSize, uint16_t afr, const SyncManager &sync_mgr) const {
+    const auto &th = sync_mgr.getThresholds();
+    // Format AFR as XX.XX (100x)
+    float afr_val = afr / 100.0f;
+    char tmp[16];
+    // Keep one decimal for compactness (e.g., 14.7)
+    snprintf(tmp, sizeof(tmp), "%.1f", afr_val);
+
+    // Determine severity
+    bool caution = false;
+    bool warning = false;
+    if (afr > th.afr_max) {
+        caution = true;
+        if (afr >= th.afr_max + 200) warning = true; // > +2.00 extremely lean
+    } else if (afr < th.afr_min) {
+        caution = true;
+        if (afr <= th.afr_min - 200) warning = true; // < -2.00 extremely rich
+    }
+
+    if (warning) {
+        snprintf(buf, bufSize, "%s!!", tmp);
+    } else if (caution) {
+        snprintf(buf, bufSize, "%s!", tmp);
+    } else {
+        snprintf(buf, bufSize, "%s", tmp);
     }
 }

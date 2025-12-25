@@ -65,6 +65,12 @@ private:
     uint8_t frame_buffer_[FRAME_SIZE];
     uint16_t buffer_index_;
     uint8_t consecutive_errors_;
+
+    // Generic Fixed CSV line buffer (secondary serial)
+    static constexpr uint16_t LINE_BUFFER_SIZE = 160;
+    char line_buffer_[LINE_BUFFER_SIZE];
+    uint16_t line_index_;
+    bool line_ready_;
     
     // Statistics
     uint32_t frames_received_;
@@ -76,6 +82,11 @@ private:
     bool validateFrame_() const;
     void extractDataFromFrame_(ECUData &ecu_data);
     void resetParserState_();
+
+    // Secondary Serial Generic Fixed (CSV) helpers
+    void resetLineBuffer_();
+    bool tryReadGenericFixedLine_();
+    bool extractDataFromGenericFixed_(ECUData &ecu_data, const char *line);
 };
 
 #endif

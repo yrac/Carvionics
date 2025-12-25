@@ -107,6 +107,16 @@ private:
     // State-driven color helpers
     DisplayManager::Color valueColorForState_(SyncManager::SyncState state) const;
     DisplayManager::Color borderColorForState_(SyncManager::SyncState state) const;
+
+    // Fullscreen state renderers
+    void renderBootSelfTest_();
+    void renderWaitECU_();
+    void renderSyncing_();
+    void renderRecovery_();
+
+    // Annotation helpers
+    void annotateClt_(char *buf, size_t bufSize, int16_t clt, const SyncManager &sync_mgr) const;
+    void annotateAfr_(char *buf, size_t bufSize, uint16_t afr, const SyncManager &sync_mgr) const;
 };
 
 #endif

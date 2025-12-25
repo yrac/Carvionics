@@ -42,6 +42,8 @@ public:
     
     // Set custom thresholds
     void setThresholds(const Thresholds &thresholds);
+    // Get thresholds (read-only)
+    const Thresholds& getThresholds() const { return thresholds_; }
     
     // Get current state
     SyncState getState() const { return current_state_; }
