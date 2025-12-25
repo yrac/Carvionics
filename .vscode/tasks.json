@@ -43,6 +43,37 @@
 				"megaatmega2560"
 			],
 			"group": "build"
+		},
+		{
+			"label": "PlatformIO Test UNO",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"platformio",
+				"test",
+				"-e",
+				"uno"
+			],
+			"isBackground": false,
+			"group": {
+				"kind": "test",
+				"isDefault": true
+			}
+		},
+		{
+			"label": "PlatformIO Test Mega",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"platformio",
+				"test",
+				"-e",
+				"megaatmega2560"
+			],
+			"isBackground": false,
+			"group": "test"
 		}
 	]
 }

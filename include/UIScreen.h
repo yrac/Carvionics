@@ -67,25 +67,22 @@ public:
 private:
     DisplayManager &display_;
     
-    // Layout constants (pixel coordinates)
+    // Layout constants (pixel coordinates) — 3x2 grid sama rata (six-pack avionics)
     static constexpr uint16_t HEADER_Y = 0;
-    static constexpr uint16_t HEADER_H = 24;   // lebih tipis, avionics bar
+    static constexpr uint16_t HEADER_H = 20;   // tipis
     
-    // Tiga baris grid avionics, masing-masing 60px
-    static constexpr uint16_t RPM_FIELD_Y = HEADER_Y + HEADER_H; // Row-1 (RPM/MAP)
-    static constexpr uint16_t RPM_FIELD_H = 60;
+    // Grid 3 kolom x 2 baris (RPM/MAP/CLT di atas, IAT/AFR/TPS di bawah)
+    static constexpr uint16_t GRID_ROW1_Y = HEADER_Y + HEADER_H;
+    static constexpr uint16_t GRID_ROW1_H = 100;  // Row-1 height
     
-    static constexpr uint16_t ENGINE_CORE_Y = RPM_FIELD_Y + RPM_FIELD_H; // Row-2 (CLT/IAT)
-    static constexpr uint16_t ENGINE_CORE_H = 60;
+    static constexpr uint16_t GRID_ROW2_Y = GRID_ROW1_Y + GRID_ROW1_H;
+    static constexpr uint16_t GRID_ROW2_H = 100;  // Row-2 height (same as row-1)
     
-    static constexpr uint16_t CONTROL_DATA_Y = ENGINE_CORE_Y + ENGINE_CORE_H; // Row-3 (AFR/TPS + secondary)
-    static constexpr uint16_t CONTROL_DATA_H = 60;
+    static constexpr uint16_t FOOTER_Y = GRID_ROW2_Y + GRID_ROW2_H;
+    static constexpr uint16_t FOOTER_H = 240 - FOOTER_Y; // auto-calc; ~20px
     
-    static constexpr uint16_t FOOTER_Y = CONTROL_DATA_Y + CONTROL_DATA_H;
-    static constexpr uint16_t FOOTER_H = 240 - FOOTER_Y; // sisakan sisa tinggi layar
-    
-    static constexpr uint16_t LEFT_PANEL_W = 160;  // dua kolom
-    static constexpr uint16_t RIGHT_PANEL_W = 160;
+    // 3 kolom sama lebar
+    static constexpr uint16_t CELL_W = 320 / 3;  // ~106px per cell
     
     // Helper methods
     DisplayManager::Color getStateColor_(SyncManager::SyncState state) const;

@@ -72,6 +72,7 @@ private:
     BlinkState blink_state_;
     uint32_t blink_timestamp_;
     uint16_t blink_period_ms_;
+    bool last_blink_on_;
     
     // Slice constants
     static constexpr uint8_t SLICE_HEADER = 0;

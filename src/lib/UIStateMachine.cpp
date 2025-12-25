@@ -6,7 +6,8 @@ UIStateMachine::UIStateMachine()
       dirty_flags_(0xFF),  // All slices dirty on startup
       blink_state_(BlinkState::OFF),
       blink_timestamp_(0),
-      blink_period_ms_(500) {
+    blink_period_ms_(500),
+    last_blink_on_(false) {
 }
 
 void UIStateMachine::update(SyncManager::SyncState sync_state) {
@@ -60,10 +61,25 @@ void UIStateMachine::clearAllDirty_() {
 }
 
 void UIStateMachine::updateBlinkState_() {
-    if (blink_state_ == BlinkState::BLINKING) {
-        // Blinking terus selama SYNC_LOSS
-        if (current_ui_state_ != SyncManager::SyncState::SYNC_LOSS) {
+    // Handle blink dirty flag for SYNC_LOSS fullscreen override
+    if (current_ui_state_ == SyncManager::SyncState::SYNC_LOSS) {
+        if (blink_state_ != BlinkState::BLINKING) {
+            blink_state_ = BlinkState::BLINKING;
+            blink_timestamp_ = millis();
+        }
+        uint32_t elapsed = millis() - blink_timestamp_;
+        uint32_t cycle_pos = elapsed % (blink_period_ms_ * 2);
+        bool blink_on = cycle_pos < blink_period_ms_;
+        if (blink_on != last_blink_on_) {
+            // Toggle occurred: mark fullscreen dirty for redraw
+            dirty_flags_ |= (1 << SLICE_FULLSCREEN);
+            last_blink_on_ = blink_on;
+        }
+    } else {
+        // Outside SYNC_LOSS: ensure blink OFF and no unnecessary redraws
+        if (blink_state_ == BlinkState::BLINKING) {
             blink_state_ = BlinkState::OFF;
         }
+        last_blink_on_ = false;
     }
 }

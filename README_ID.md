@@ -10,6 +10,7 @@
 
 - [Apa itu Carvionics?](#apa-itu-carvionics)
 - [Fitur Unggulan](#fitur-unggulan)
+- [Mockup Tampilan](#mockup-tampilan)
 - [Hardware yang Dibutuhkan](#hardware-yang-dibutuhkan)
 - [Setup & Instalasi](#setup--instalasi)
 - [Cara Menggunakan](#cara-menggunakan)
@@ -20,15 +21,18 @@
 
 ## ❓ Apa itu Carvionics?
 
-Carvionics EFIS adalah sistem display untuk memonitor kondisi mesin kendaraan Anda secara real-time. Sistem ini:
+Carvionics EFIS adalah sistem display untuk memonitor kondisi mesin kendaraan Anda secara **real-time**. 
 
-- 📡 **Hanya Membaca Data** - Tidak mengirim apapun ke ECU, aman & terpercaya
-- 🎨 **Gaya Cockpit** - Tampilannya seperti instrument panel pesawat, profesional & mudah dibaca
-- ⚡ **Update Cepat** - Data diperbarui 20 kali per detik (20Hz)
-- 🛡️ **Aman & Stabil** - Punya sistem deteksi jika koneksi putus
-- 🎯 **Mudah Dipahami** - Kode terstruktur dengan baik (OOP - Object Oriented Programming)
+### 🎯 Fitur Utama
 
-Dalam bahasa sederhana: **Carvionics adalah "speedometer avionics" untuk mesin Speeduino Anda!**
+- 📡 **Passive Listener** - Hanya membaca data dari ECU, tidak mengirim apapun (aman & terpercaya)
+- 🎨 **Avionics Style** - Tampilannya seperti cockpit pesawat, profesional & mudah dibaca
+- ⚡ **Fast Update** - Data diperbarui 20 kali per detik (20Hz) untuk response real-time
+- 🛡️ **Safety Critical** - Deteksi otomatis sync loss & blink alert untuk koneksi putus
+- 🎯 **OOP Architecture** - Kode modular, mudah di-extend & maintain
+- 🎛️ **Dual Platform** - Kompatibel Arduino Mega 2560 (recommended) atau Uno (hemat)
+
+**Dalam bahasa sederhana:** Carvionics adalah "avionics instrument panel" untuk mesin Speeduino Anda! 🚗💨
 
 ---
 
@@ -36,182 +40,476 @@ Dalam bahasa sederhana: **Carvionics adalah "speedometer avionics" untuk mesin S
 
 | Fitur | Deskripsi |
 |-------|-----------|
-| **Tampilan RPM** | Angka RPM besar di tengah layar (paling penting!) |
-| **Data Mesin Inti** | Suhu mesin (CLT), AFR, MAP, Tegangan baterai dalam 1 tampilan |
-| **Kontrol Data** | TPS (throttle), IAT (intake air temp), status koneksi |
-| **Deteksi Status** | Otomatis mendeteksi: Normal → Warning → Data Hilang |
-| **Alert Berkedip** | Layar berkedip merah jika koneksi ke mesin terputus |
-| **Validasi Data** | Cek otomatis agar data yang ditampilkan benar |
-| **Dual Board** | Kompatibel dengan Arduino Mega (recommended) atau Uno |
+| **Primary RPM Display** | Angka RPM besar & dominan di tengah layar |
+| **Engine Core Data** | CLT, AFR, MAP, Battery dalam 4-quadrant layout |
+| **Control Parameters** | TPS, IAT, Frame counter, Sync status indicator |
+| **State Machine** | NO_DATA → NORMAL → CAUTION → WARNING → SYNC_LOSS → RECOVERY |
+| **Visual Alert** | Full-screen red blink saat sync loss terdeteksi |
+| **Data Validation** | Timeout detection, threshold checks, checksum verify |
+| **Dirty Flag Optimization** | Per-slice redraw untuk anti-flicker & smooth animation |
 
 ---
 
+## 📱 Mockup Tampilan
+
+### Status: NORMAL (Green - All Systems GO)
+```
+╔══════════════════════════════════════════════╗
+║                                              ║
+║                                              ║
+║              ┌─────────────────┐             ║
+║              │      5850       │             ║
+║              │      RPM        │             ║
+║              └─────────────────┘             ║
+║                                              ║
+║         ┌──────────┬──────────┐              ║
+║         │   CLT    │   AFR    │              ║
+║         │  85°C    │  13.2:1  │              ║
+║         ├──────────┼──────────┤              ║
+║         │   MAP    │   BAT    │              ║
+║         │ 650 kPa  │ 13.8V    │              ║
+║         └──────────┴──────────┘              ║
+║                                              ║
+║  TPS: 25%  IAT: 32°C  SYNC: OK ✓            ║
+║                                              ║
+║           STATUS: ✅ NORMAL                  ║
+║                                              ║
+╚══════════════════════════════════════════════╝
+        320 x 240 pixels (2.4" TFT)
+        Background Color: GREEN
+```
+
+### Status: CAUTION (Yellow - Attention Required)
+```
+╔══════════════════════════════════════════════╗
+║                                              ║
+║                 ⚠️ CAUTION ⚠️                ║
+║                                              ║
+║              ┌─────────────────┐             ║
+║              │      5850       │             ║
+║              │      RPM        │             ║
+║              └─────────────────┘             ║
+║                                              ║
+║         ┌──────────┬──────────┐              ║
+║         │   CLT    │   AFR    │              ║
+║         │ ⚠️ 92°C  │  13.2:1  │              ║
+║         ├──────────┼──────────┤              ║
+║         │   MAP    │   BAT    │              ║
+║         │ 650 kPa  │ 13.8V    │              ║
+║         └──────────┴──────────┘              ║
+║                                              ║
+║  Engine temperature approaching limit       ║
+║                                              ║
+║          STATUS: ⚠️ CAUTION                  ║
+║                                              ║
+╚══════════════════════════════════════════════╝
+        320 x 240 pixels (2.4" TFT)
+        Background Color: AMBER/YELLOW
+```
+
+### Status: WARNING (Red - Critical!)
+```
+╔══════════════════════════════════════════════╗
+║                                              ║
+║              🔴 WARNING 🔴                   ║
+║                                              ║
+║              ┌─────────────────┐             ║
+║              │      5850       │             ║
+║              │      RPM        │             ║
+║              └─────────────────┘             ║
+║                                              ║
+║         ┌──────────┬──────────┐              ║
+║         │   CLT    │   AFR    │              ║
+║         │🔴105°C🔴 │  13.2:1  │              ║
+║         ├──────────┼──────────┤              ║
+║         │   MAP    │   BAT    │              ║
+║         │ 650 kPa  │🔴11.2V🔴 │              ║
+║         └──────────┴──────────┘              ║
+║                                              ║
+║  CRITICAL: Temperature exceeded!             ║
+║  CRITICAL: Battery voltage too low!          ║
+║                                              ║
+║          STATUS: 🔴 WARNING                  ║
+║                                              ║
+╚══════════════════════════════════════════════╝
+        320 x 240 pixels (2.4" TFT)
+        Background Color: RED (Dark)
+        Some fields blinking RED
+```
+
+### Status: SYNC LOSS (Red Blink - Connection Lost!)
+```
+╔══════════════════════════════════════════════╗
+║                                              ║
+║          ❌ SYNC LOSS - NO DATA ❌           ║
+║                                              ║
+║                                              ║
+║          Connection timeout detected!        ║
+║                                              ║
+║      Last data received: 2.5 seconds ago     ║
+║                                              ║
+║          Check Speeduino ECU cable!          ║
+║                                              ║
+║          Waiting for reconnection...         ║
+║                                              ║
+║      (Screen is BLINKING RED continuously)  ║
+║                                              ║
+║                                              ║
+╚══════════════════════════════════════════════╝
+        320 x 240 pixels (2.4" TFT)
+        Background Color: RED (Blinking)
+        Entire screen flashing every 200ms
+```
+
+### Status: NO DATA (Black - Waiting for First Connection)
+```
+╔══════════════════════════════════════════════╗
+║                                              ║
+║                                              ║
+║                    ⏳                         ║
+║                                              ║
+║         Waiting for ECU connection...        ║
+║                                              ║
+║      Check serial cable and baud rate       ║
+║                                              ║
+║                                              ║
+║                                              ║
+║                                              ║
+║                                              ║
+║                                              ║
+╚══════════════════════════════════════════════╝
+        320 x 240 pixels (2.4" TFT)
+        Background Color: BLACK
+        Status: Initializing...
+```
+
+---
+
+## 🖥️ Avionics Mockup per State
+
+Berikut rancangan layar per state sesuai aturan avionics (truth-first, tidak berlebihan, fokus ke angka penting):
+
+### 1️⃣ BOOT / POWER ON
+
+Tujuan: alat hidup & hardware OK
+
+```
+┌──────────────────────────────────────────────┐
+│ ECU MONITOR                                  │
+│                                              │
+│ TFT   OK                                     │
+│ MCU   OK                                     │
+│ BUS   OK                                     │
+│                                              │
+│ INIT...                                      │
+└──────────────────────────────────────────────┘
+```
+
+- Tidak ada data mesin
+- Tidak ada animasi
+- Mirip avionics self-test
+
+### 2️⃣ WAIT ECU (NO DATA)
+
+Tujuan: jujur — ECU belum kirim data
+
+```
+┌──────────────────────────────────────────────┐
+│ ECU MONITOR                                  │
+│                                              │
+│ WAIT ECU                                     │
+│ SERIAL LINK                                  │
+│                                              │
+│ RPM ---   CLT ---   AFR ---                  │
+└──────────────────────────────────────────────┘
+```
+
+- Placeholder --- → tidak bohong
+- User tahu ini normal
+
+### 3️⃣ SYNCING (DATA MASUK, BELUM STABIL)
+```
+┌──────────────────────────────────────────────┐
+│ ECU            SYNCING...                    │
+├──────────────────────────────────────────────┤
+│ RPM ----        MAP --                       │
+│ CLT --          IAT --                       │
+│ AFR --          TPS --                       │
+└──────────────────────────────────────────────┘
+```
+
+- Data belum valid
+- Tidak tampil ignition / idle
+- Transisi cepat ke NORMAL
+
+### 4️⃣ NORMAL OPERATION (MAIN DISPLAY)
+```
+┌──────────────────────────────────────────────┐
+│ ECU            SYNC OK           BAT 13.9   │
+├──────────────────────────────────────────────┤
+│ RPM 2450        MAP  42           │
+│ CLT  87         IAT  31           │
+│ AFR 14.4        TPS   3           │
+├──────────────────────────────────────────────┤
+│ ADV  18         DWL 2.8           │
+│ ISC  42                             │
+├──────────────────────────────────────────────┤
+│ FUEL 0.38 L                          │
+└──────────────────────────────────────────────┘
+```
+
+- Semua ECU truth
+- Font besar & seimbang
+- Tidak redundan dengan dashboard analog
+
+### 5️⃣ CAUTION STATE
+
+Contoh: CLT tinggi / AFR lean
+
+```
+┌──────────────────────────────────────────────┐
+│ ECU            SYNC OK           BAT 13.4   │
+├──────────────────────────────────────────────┤
+│ RPM 2450        MAP  42           │
+│ CLT  97 !       IAT  31           │
+│ AFR 16.2 !      TPS   3           │
+├──────────────────────────────────────────────┤
+│ ADV  18         DWL 2.8           │
+│ ISC  48                             │
+├──────────────────────────────────────────────┤
+│ CAUTION                                   │
+└──────────────────────────────────────────────┘
+```
+
+- Angka tetap tampil
+- Warna bicara, bukan ukuran
+- Footer satu kata (avionic rule)
+
+### 6️⃣ WARNING STATE
+
+Contoh: Overheat / battery drop
+
+```
+┌──────────────────────────────────────────────┐
+│ ECU            SYNC OK           BAT 11.8   │
+├──────────────────────────────────────────────┤
+│ RPM 2600        MAP  55           │
+│ CLT 108 !!      IAT  38           │
+│ AFR 15.9 !      TPS  12           │
+├──────────────────────────────────────────────┤
+│ ADV  10         DWL 2.6           │
+│ ISC  65                             │
+├──────────────────────────────────────────────┤
+│ WARNING                                   │
+└──────────────────────────────────────────────┘
+```
+
+- Tetap readable
+- Tidak panik visual
+- Fokus ke angka penting
+
+### 7️⃣ SYNC LOSS (FULL OVERRIDE)
+```
+┌──────────────────────────────────────────────┐
+│                                              │
+│            ⚠  SYNC LOSS  ⚠                  │
+│                                              │
+│        CHECK TRIGGER / CAM / CRANK           │
+│                                              │
+│         RPM / IGN INVALID                    │
+│                                              │
+└──────────────────────────────────────────────┘
+```
+
+- Override total
+- Tidak ada data lain
+- Ini avionic non-negotiable
+
+### 8️⃣ RECOVERY (SETELAH SYNC BALIK)
+```
+┌──────────────────────────────────────────────┐
+│ ECU            RECOVERING...                 │
+├──────────────────────────────────────────────┤
+│ RPM ----        MAP --                       │
+│ CLT --          IAT --                       │
+│ AFR --          TPS --                       │
+└──────────────────────────────────────────────┘
+```
+
+- Delay singkat
+- Hindari flicker & false alarm
+
+### 🧭 Ringkasan State Machine
+
+```
+BOOT
+ ↓
+WAIT_ECU
+ ↓
+SYNCING
+ ↓
+NORMAL
+        ↳ CAUTION
+        ↳ WARNING
+        ↳ SYNC_LOSS → RECOVERY → NORMAL
+```
+
 ## 🔧 Hardware yang Dibutuhkan
 
-### Setup Minimal
+### 📦 Komponen Utama
 
-Anda membutuhkan 3 komponen utama:
+Anda membutuhkan 3 komponen inti:
 
 ```
 ┌─────────────────────────────────────┐
-│   Arduino Mega 2560 (Recommended)   │  ← Otak dari sistem
-│   atau Arduino Uno (Hemat budget)   │
+│  Arduino Mega 2560 or Uno           │  ← Microcontroller
+│  (Mega recommended, Uno budget)     │
 └──────────────┬──────────────────────┘
                │
 ┌──────────────┴──────────────────────┐
-│  Layar TFT 2.4" (320×240 pixel)     │  ← Untuk tampilan data
-│  Tipe: ILI9325 atau ILI9341         │
+│  TFT 2.4" Display 320×240           │  ← Display
+│  Parallel Interface (8-bit)         │
+│  ILI9325 / ILI9341 Controller       │
 └──────────────┬──────────────────────┘
                │
 ┌──────────────┴──────────────────────┐
-│  Speeduino ECU (dengan serial out)  │  ← Pengirim data mesin
-│  Connected via UART Serial          │
+│  Speeduino ECU                      │  ← Data Source
+│  Serial Output (UART)               │
+│  115200 baud, 8N1                   │
 └─────────────────────────────────────┘
 ```
 
-### Spesifikasi Komponen
+### 📋 Spesifikasi Hardware
 
 | Komponen | Spesifikasi | Catatan |
 |----------|-------------|---------|
-| **Microcontroller** | ATmega2560 16MHz | Mega: 8KB RAM (best), Uno: 2KB RAM (hemat) |
-| **Layar TFT** | 2.4" 320×240 pixels | Konektor parallel 16-pin |
-| **Kecepatan Serial** | 115200 baud, 8N1 | Standar Speeduino |
-| **Power Supply** | 7-12V external atau USB | Layar butuh 5V regulated |
-| **Penggunaan RAM** | ~1.4 KB (Mega), ~1.2 KB (Uno) | Efisien, banyak space tersisa |
-| **Penggunaan Flash** | ~16 KB | Cukup untuk custom logic |
+| **MCU** | ATmega2560 16MHz | Mega: 8KB SRAM, Uno: 2KB SRAM |
+| **TFT Display** | 2.4" 320×240 pixels | 8-bit parallel (16-pin data) |
+| **Serial Link** | 115200 baud, 8N1 | Passive read-only |
+| **Power Supply** | 7-12V external / USB | Display: 5V regulated |
+| **RAM Usage** | ~1.4 KB (Mega), ~1.2 KB (Uno) | Very efficient |
+| **Flash Usage** | ~16 KB code | Plenty of space remaining |
 
-### Wiring (Arduino Mega - Yang Paling Mudah)
+### 🔌 Wiring (Arduino Mega - Recommended)
 
 ```
 ┌────────────────────────────────────────────────┐
-│  TFT Display 2.4" Pins → Arduino Mega Pins     │
+│   TFT Display Pins → Arduino Mega Pins         │
 ├────────────────────────────────────────────────┤
-│  Data Lines (8 kabel):                         │
-│    D0 → A0    |  D4 → A4                       │
-│    D1 → A1    |  D5 → A5                       │
-│    D2 → A2    |  D6 → A6                       │
-│    D3 → A3    |  D7 → A7                       │
+│   Data Bus (8 parallel lines):                 │
+│     D0 → A0    |  D4 → A4                      │
+│     D1 → A1    |  D5 → A5                      │
+│     D2 → A2    |  D6 → A6                      │
+│     D3 → A3    |  D7 → A7                      │
 ├────────────────────────────────────────────────┤
-│  Control Lines (5 kabel):                      │
-│    CS  → D3                                    │
-│    CD  → D2                                    │
-│    WR  → D4                                    │
-│    RD  → D5                                    │
-│    RST → D6                                    │
+│   Control Lines:                               │
+│     CS  (Chip Select)  → Digital Pin 3         │
+│     CD  (Command/Data) → Digital Pin 2         │
+│     WR  (Write)        → Digital Pin 4         │
+│     RD  (Read)         → Digital Pin 5         │
+│     RST (Reset)        → Digital Pin 6         │
 ├────────────────────────────────────────────────┤
-│  Power:                                        │
-│    VCC → 5V (via regulator)                    │
-│    GND → GND (common ground)                   │
+│   Power:                                       │
+│     VCC → 5V (via regulator)                   │
+│     GND → GND (common ground ALL devices)      │
 ├────────────────────────────────────────────────┤
-│  Speeduino Serial:                             │
-│    TX (ECU) → RX1 (pin 19 di Mega)             │
-│    GND (ECU) → GND (common ground)             │
+│   Serial from Speeduino ECU:                   │
+│     ECU TX → Arduino RX1 (Pin 19 - Mega)       │
+│     ECU GND → Arduino GND (common ground)      │
 └────────────────────────────────────────────────┘
 ```
 
-> 💡 **Tips**: Gunakan kabel berkualitas baik supaya koneksi data stabil. Grounding yang bagus sangat penting!
+> 💡 **Tips Penting:** Gunakan kabel berkualitas & grounding yang bagus sangat penting untuk data integrity!
 
 ---
 
 ## 🚀 Setup & Instalasi
 
-### 1️⃣ Install Tools
+### 1️⃣ Install PlatformIO
 
-Anda perlu install **PlatformIO** (IDE berbasis VSCode yang mudah untuk Arduino):
-
-**Opsi A: Langsung dari VSCode (Recommended)**
-- Install extension "PlatformIO IDE" dari VSCode marketplace
+**Option A: Langsung dari VSCode (Recommended)**
+- Install extension "PlatformIO IDE" dari marketplace
 - Restart VSCode
-- PlatformIO akan auto-install tools yang diperlukan
+- PlatformIO auto-download tools yang diperlukan
 
-**Opsi B: Manual (Jika belum punya Python)**
-- Install [Python 3.8+](https://www.python.org)
-- Install [VSCode](https://code.visualstudio.com)
-- Install PlatformIO via terminal: `pip install platformio`
+**Option B: Manual via Terminal**
+```bash
+pip install platformio
+```
 
-### 2️⃣ Download/Clone Project
+### 2️⃣ Clone Repository
 
 ```bash
 git clone https://github.com/YourUsername/Carvionics.git
 cd Carvionics
 ```
 
-Atau jika copy-paste folder, pastikan struktur folder sesuai workspace di atas.
+### 3️⃣ Update Configuration (platformio.ini)
 
-### 3️⃣ Konfigurasi Hardware (Penting!)
+Edit `platformio.ini` sesuai board Anda:
 
-Edit file `platformio.ini` sesuai board Anda:
-
-**Untuk Arduino Mega** (recommended):
+**Untuk Arduino Mega:**
 ```ini
 [env:megaatmega2560]
 platform = atmelavr
 board = megaatmega2560
-upload_port = COM3        ; ← Sesuaikan dengan port Anda
-monitor_port = COM3       ; ← Sama
+upload_port = COM3        ; ← Update dengan port Anda
+monitor_port = COM3
 upload_speed = 115200
 ```
 
-**Untuk Arduino Uno** (jika budget terbatas):
+**Untuk Arduino Uno:**
 ```ini
 [env:uno]
 platform = atmelavr
 board = uno
-upload_port = COM5        ; ← Sesuaikan dengan port Anda
-monitor_port = COM5       ; ← Sama
+upload_port = COM5        ; ← Update dengan port Anda
+monitor_port = COM5
 upload_speed = 115200
 ```
 
-### 4️⃣ Install Libraries
+### 4️⃣ Compile & Upload
 
-PlatformIO akan otomatis download library yang diperlukan saat build pertama kali:
-- **MCUFRIEND_kbv** - Driver untuk TFT display
-- **Adafruit GFX** - Library grafis dasar
-- **Arduino Core** - Standard Arduino library
-
-### 5️⃣ Compile & Upload
-
-**Via VSCode PlatformIO (Paling Mudah):**
-
+**Via VSCode (Paling Mudah):**
 1. Buka Command Palette: `Ctrl + Shift + P`
-2. Ketik `PlatformIO: Build` untuk compile
-3. Jika sukses, ketik `PlatformIO: Upload` untuk upload ke board
+2. `PlatformIO: Build` → compile
+3. `PlatformIO: Upload` → upload ke board
 
-**Via Terminal (Jika prefer CLI):**
-
+**Via Terminal:**
 ```bash
-# Untuk Mega:
+# Mega:
 pio run -e megaatmega2560 --target upload
 
-# Untuk Uno:
+# Uno:
 pio run -e uno --target upload
 ```
 
-✅ **Selesai!** Layar Anda akan hidup dan menampilkan data mesin.
+✅ **Done!** Layar akan hidup dan menampilkan data mesin.
 
 ---
 
 ## 💻 Cara Menggunakan
 
-### Status Layar
+### 🎯 Display States
 
-Saat program pertama kali jalan, Anda akan melihat beberapa state:
+Carvionics memiliki 5 state utama yang ditunjukkan dengan warna & tampilan berbeda:
 
-| Status | Tampilan | Artinya |
-|--------|----------|---------|
-| **NO DATA** | Layar hitam kosong | Menunggu koneksi dari ECU Speeduino |
-| **NORMAL** | Tampilan normal, warna hijau | Data mesin normal, semua aman ✅ |
-| **CAUTION** | Warna kuning/amber | Ada parameter yang mulai out of range ⚠️ |
-| **WARNING** | Warna merah | Ada parameter yang critical 🔴 |
-| **SYNC LOSS** | Layar kedip merah | Koneksi putus, perlu dicek kabel ❌ |
+| State | Warna | Arti | Action |
+|-------|-------|------|--------|
+| **NO_DATA** | Black | Menunggu koneksi ECU | Check kabel serial |
+| **NORMAL** | Green | Semua parameter normal ✅ | Monitor biasa |
+| **CAUTION** | Yellow | Ada parameter warning ⚠️ | Perhatian diperlukan |
+| **WARNING** | Red | Ada parameter critical 🔴 | Tindakan segera! |
+| **SYNC_LOSS** | Red Blink | Koneksi terputus ❌ | Check physical connection |
 
-### Tombol & Interaksi
+### 🎮 Tombol & Interaksi
 
-Saat ini versi ini adalah **passive display** - hanya menampilkan data tanpa button interaksi. Navigasi otomatis berdasarkan state mesin.
+Saat ini adalah **passive display** - hanya menampilkan data tanpa button interaksi.
 
-Fitur future:
-- Tombol untuk toggle antara tampilan berbeda
-- Setting threshold alarm custom
+Future features:
+- Button untuk toggle display modes
+- Custom threshold settings
+- Data logging
 
 ---
 
@@ -219,18 +517,17 @@ Fitur future:
 
 ```
 Carvionics/
+├── src/
+│   ├── main.cpp                     ← Entry point (setup & main loop)
+│   └── lib/
+│       ├── ECUData.cpp              ← Data container & validation
+│       ├── SpeeduinoParser.cpp      ← Serial frame decoder
+│       ├── SyncManager.cpp          ← Sync loss detection state machine
+│       ├── DisplayManager.cpp       ← TFT driver wrapper
+│       ├── UIScreen.cpp             ← UI rendering logic
+│       └── UIStateMachine.cpp       ← State orchestration
 │
-├── src/                           ← Kode utama
-│   ├── main.cpp                   ← Bagian awal program (setup & loop)
-│   └── lib/                       ← Implementasi class
-│       ├── ECUData.cpp            ← Penyimpan data mesin
-│       ├── SpeeduinoParser.cpp    ← Pembaca serial dari ECU
-│       ├── SyncManager.cpp        ← Deteksi koneksi putus
-│       ├── DisplayManager.cpp     ← Driver untuk TFT
-│       ├── UIScreen.cpp           ← Fungsi gambar di layar
-│       └── UIStateMachine.cpp     ← Logic untuk state mesin
-│
-├── include/                       ← Header files (definisi class)
+├── include/
 │   ├── ECUData.h
 │   ├── SpeeduinoParser.h
 │   ├── SyncManager.h
@@ -238,137 +535,124 @@ Carvionics/
 │   ├── UIScreen.h
 │   └── UIStateMachine.h
 │
-├── platformio.ini                 ← Konfigurasi build
-├── README.md                      ← Dokumentasi detil (English)
-└── README_ID.md                   ← Dokumentasi ini (Bahasa Indonesia)
+└── platformio.ini                   ← Build configuration
 ```
 
-### Class Utama (Penjelasan Singkat)
+### 🔍 Class Descriptions
 
-**1. ECUData** 
-```
-Tugasnya: Simpan data mesin (RPM, temperatur, dll)
-Analogi: "Buku catatan mesin"
-```
-
-**2. SpeeduinoParser**
-```
-Tugasnya: Baca data dari serial (kabel dari ECU)
-Analogi: "Telinga yang mendengarkan ECU"
-```
-
-**3. SyncManager**
-```
-Tugasnya: Cek apakah data masih berdatangan atau koneksi putus
-Analogi: "Perawat yang cek detak jantung pasien"
-```
-
-**4. DisplayManager**
-```
-Tugasnya: Kontrol layar TFT (gambar, warna, refresh)
-Analogi: "Tangan yang menggambar di layar"
-```
-
-**5. UIScreen**
-```
-Tugasnya: Hitung posisi & warna elemen UI
-Analogi: "Desainer yang atur layout tampilan"
-```
-
-**6. UIStateMachine**
-```
-Tugasnya: Atur state (Normal/Warning/SyncLoss) & apa yang perlu digambar ulang
-Analogi: "Manager yang koordinasi semua state"
-```
+| Class | Purpose |
+|-------|---------|
+| **ECUData** | Store & validate engine parameters |
+| **SpeeduinoParser** | Decode binary serial frames from ECU |
+| **SyncManager** | Detect connection loss & recovery |
+| **DisplayManager** | Control TFT hardware operations |
+| **UIScreen** | Render UI elements & handle layout |
+| **UIStateMachine** | Manage display states & redraw optimization |
 
 ---
 
 ## 🐛 Troubleshooting
 
-### ❌ "Layar Tidak Hidup / Hitam Polos"
+### ❌ Display Not Turning On (Black Screen)
 
-**Kemungkinan 1: Port serial salah**
-- Cek di Device Manager (Windows) → Ports → Lihat COM port Arduino Anda
-- Update `platformio.ini` dengan port yang benar
-- Compile & upload ulang
+**Check 1: Serial Port Configuration**
+```
+→ Open Device Manager → Ports → Check COM port number
+→ Update platformio.ini with correct port
+→ Rebuild & re-upload
+```
 
-**Kemungkinan 2: Kabel TFT lepas atau salah**
-- Cabut semua kabel data TFT (16 kabel A0-A7, CS, CD, WR, RD, RST)
-- Cek di display datasheet kalau ada yang terbalik
-- Ulangi pemasangan dengan teliti
-- Coba lagi
+**Check 2: TFT Display Wiring**
+```
+→ Verify all 16 data lines (A0-A7, D0-D7) connected properly
+→ Check control lines (CS, CD, WR, RD, RST)
+→ Reseat all connectors firmly
+→ Retry
+```
 
-**Kemungkinan 3: Speeduino belum kirim data**
-- Pastikan ECU Speeduino sudah nyala & berjalan
-- Cek dengan Serial Monitor (PlatformIO) apakah data masuk
-- Update `SERIAL_BAUD` di `platformio.ini` kalau baud rate berbeda
+**Check 3: Speeduino Sending Data**
+```
+→ Verify ECU is powered & running
+→ Open Serial Monitor to verify data arrival
+→ Check baud rate matches (115200)
+→ Verify UART cable connected to RX1
+```
 
-### ⚠️ "Compile Error / Build Gagal"
-
-**Error: undefined reference to ...**
-- Pastikan semua file di `src/lib/` ada
-- Cek `platformio.ini` sudah include library yang benar
-- Rebuild: `PlatformIO: Clean` lalu `PlatformIO: Build`
+### ⚠️ Compile / Build Errors
 
 **Error: MCUFRIEND_kbv not found**
-- Library belum download
-- Open terminal & jalankan: `pio lib install "prenticedavid/MCUFRIEND_kbv@^3.1.0-Beta"`
+```bash
+pio lib install "prenticedavid/MCUFRIEND_kbv@^3.1.0-Beta"
+```
 
-### 🔌 "Data Hilang / Banyak Error"
+**Error: undefined reference**
+```
+→ Verify all .cpp files in src/lib/ present
+→ Run: pio run --target clean
+→ Rebuild
+```
 
-**Kemungkinan: Grounding jelek**
-- Pastikan GND (negatif) ECU, Arduino, dan TFT **terhubung langsung satu sama lain**
-- Jangan cuma satu titik - buat multiple ground connection
-- Gunakan kabel tebal untuk ground
+### 📊 Data Not Updating / Stuck Values
 
-**Kemungkinan 2: Kabel serial long/berjauhan**
-- Kalau kabel RX lebih dari 1-2 meter, gunakan twisted pair untuk TX-GND
-- Kurangi kecepatan baud jika banyak noise: ubah `115200` ke `9600` di `platformio.ini`
+**Check 1: Serial Connection**
+```
+→ Monitor → Check if data arriving from ECU
+→ Verify ECU format (Binary or Secondary Serial Generic Fixed)
+→ Check baud rate: 115200
+```
 
-### 📊 "Angka Tidak Update / Tertanam"
+**Check 2: Grounding Issues**
+```
+→ Verify all GND connections are solid
+→ Use multiple ground points, not just one
+→ Use thick wire for grounds
+→ Check for oxidation on connectors
+```
 
-- Cek Serial Monitor - apakah data masuk dari ECU?
-- Pastikan ECU format "Speeduino Binary" atau "Secondary Serial Generic Fixed"
-- Check `SyncManager` untuk deteksi data timeout
-- Debug dengan menambah `Serial.print()` di `main.cpp`
+**Check 3: Cable Quality**
+```
+→ If serial cable >2m, use shielded twisted pair
+→ If too much noise, try slower baud: 9600
+→ Replace cable if corroded
+```
+3
+---
+
+## 📚 Additional Resources
+
+- [PLATFORMIO_GUIDE.md](PLATFORMIO_GUIDE.md) - PlatformIO setup details
+- [WIRING_GUIDE.md](WIRING_GUIDE.md) - Detailed wiring with diagrams
+- [SECONDARY_SERIAL.md](SECONDARY_SERIAL.md) - Secondary serial configuration
+- [README.md](README.md) - Technical documentation (English)
 
 ---
 
-## 📚 Bacaan Lebih Lanjut
+## 🤝 Contributing
 
-- [PLATFORMIO_GUIDE.md](PLATFORMIO_GUIDE.md) - Setup detail untuk PlatformIO
-- [WIRING_GUIDE.md](WIRING_GUIDE.md) - Panduan wiring lengkap dengan gambar
-- [SECONDARY_SERIAL.md](SECONDARY_SERIAL.md) - Konfigurasi secondary serial
-- [README.md](README.md) - Dokumentasi teknis (English)
+Found a bug? Have an idea? Contributions welcome!
 
----
-
-## 🤝 Kontribusi
-
-Punya ide? Mau improve? Sangat welcome! 
-
-- Fork repository
-- Buat branch baru: `git checkout -b fitur-baru`
-- Commit changes: `git commit -m "Tambah fitur X"`
-- Push: `git push origin fitur-baru`
-- Buat Pull Request
+1. Fork the repository
+2. Create feature branch: `git checkout -b feature-name`
+3. Commit changes: `git commit -m "Add feature"`
+4. Push to branch: `git push origin feature-name`
+5. Open Pull Request
 
 ---
 
-## 📄 Lisensi
+## 📄 License
 
-Proyek ini open source. Bebas digunakan, modify, dan distribute dengan tetap menyebutkan original creator.
-
----
-
-## 💬 Pertanyaan?
-
-- Baca FAQ di dokumentasi teknis
-- Check issue di repository
-- Tanya di forum Arduino Indonesia
-
-**Happy Monitoring! 🚗💨**
+Open source project. Free to use, modify, and distribute with attribution.
 
 ---
 
-<sub>Last Updated: Desember 2025 | Carvionics EFIS v3.0</sub>
+## 💬 Questions?
+
+- Check documentation files
+- Review GitHub issues
+- Post in Arduino community forums
+
+**Enjoy monitoring your engine! 🚗💨**
+
+---
+
+<sub>Last Updated: December 2025 | Carvionics EFIS v3.0</sub>

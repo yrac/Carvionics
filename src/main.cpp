@@ -60,6 +60,7 @@ const uint32_t DEBUG_INTERVAL_MS = 5000;   // Debug every 5 seconds
 // ARDUINO SETUP
 // ============================================================================
 
+#ifndef PIO_UNIT_TESTING
 void setup() {
     Serial.begin(115200);
     delay(1000);  // Wait for serial monitor
@@ -104,7 +105,9 @@ void setup() {
     thresholds.afr_max = 1700;
     thresholds.battery_min = 11000;
     thresholds.data_timeout_ms = 500;
-    thresholds.recovery_delay_ms = 2000;
+    // Tweaked to reduce flicker/state flapping
+    thresholds.data_timeout_ms = 700;
+    thresholds.recovery_delay_ms = 2500;
     sync_manager.setThresholds(thresholds);
     
     system_state = SystemState::RUNNING;
@@ -214,3 +217,4 @@ void handleSerialCommand() {
             Serial.println(cmd);
     }
 }
+#endif
