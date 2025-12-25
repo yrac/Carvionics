@@ -17,6 +17,7 @@
 - [Data Format & Protocol](#data-format--protocol)
 - [Development Guide](#development-guide)
 - [Troubleshooting](#troubleshooting)
+ - [Secondary Serial Quick Guide](SECONDARY_SERIAL.md)
 
 ---
 
@@ -24,7 +25,7 @@
 
 Carvionics EFIS adalah sistem display motor otomotif yang dirancang khusus untuk Speeduino ECU. Sistem ini:
 
-- ✅ **Passive Listener**: Hanya membaca data Speeduino via serial, tidak mengirim apapun ke ECU
+- ✅ **Passive Listener**: Hanya membaca data Speeduino via serial, tidak mengirim apapun ke ECU (autodetect Binary atau Secondary Serial Generic Fixed)
 - ✅ **OOP Architecture**: Modular, extensible, maintainable
 - ✅ **Real-time Monitoring**: Update rate 20Hz dengan dirty-flag optimization
 - ✅ **Safety-Critical**: State machine untuk deteksi sync loss & recovery
@@ -108,8 +109,9 @@ Power:
   GND → GND
 
 Serial (Speeduino):
-  ECU TX → Mega RX1 (PIN 19)
+  ECU TX → Mega RX1 (PIN 19) [default]
   ECU GND → GND
+  (Opsional) Jika Speeduino memakai Secondary IO di Serial3, pindah ke Mega RX3 (PIN 15) dan sesuaikan port di kode
 ```
 
 ---
@@ -291,6 +293,19 @@ void loop() {
 ```
 
 ### Configuration (Thresholds)
+### Speeduino Secondary IO (Generic Fixed)
+
+Untuk menggunakan Generic Fixed (CSV):
+- Enable Secondary Serial IO Interface di TunerStudio.
+- Pilih Generic Fixed output (simple atau enhanced sesuai kebutuhan).
+- Pastikan Speeduino mengirim ke port serial yang sama dengan yang didengarkan firmware:
+  - Mega 2560 default: Serial1 (RX1/19). Opsional: ganti ke Serial3 (RX3/15) jika ECU mengirim di Serial3.
+  - Uno: Serial (shared). Hindari konflik dengan Serial Monitor saat uji.
+- Urutan field default yang diharapkan: RPM, MAP, TPS, CLT, IAT, AFR, BAT. Jika urutanmu berbeda, mapping dapat disesuaikan di parser tanpa mengubah API.
+
+Kebijakan tampilan:
+- Hanya field yang diterima yang akan ditampilkan; field yang tidak tersedia akan muncul sebagai “—”. Tidak ada perhitungan atau estimasi.
+
 
 Di `main.cpp` setup():
 
@@ -424,6 +439,38 @@ Data Offsets (from Speeduino v20+):
   31:    Status (uint8_t, bit 0 = sync)
 ```
 
+### Secondary Serial: Generic Fixed (CSV)
+
+Firmware ini juga mendukung output Secondary Serial “Generic Fixed” (CSV) dari Speeduino. Parser akan mengumpulkan satu baris ASCII hingga newline dan memetakan nilai sesuai urutan tetap umum berikut:
+
+Urutan field (asumsi umum, dapat disesuaikan):
+- 0: RPM (integer, RPM)
+- 1: MAP (integer, kPa)
+- 2: TPS (integer, %)
+- 3: CLT (integer, °C)
+- 4: IAT (integer, °C)
+- 5: AFR (float mis. 14.7 atau 100x mis. 1470)
+- 6: Battery (float volt mis. 12.5 atau 0.1V mis. 123 → 12.3V)
+
+Aturan skala dan validasi:
+- AFR: Jika < 50 → dianggap voltase float (14.7 → 1470 internal 100x). Jika > 50 → diasumsikan sudah 100x.
+- Battery: Jika 0..30 → volt (12.5V → 12500 mV). Jika 0..160 → 0.1V (123 → 12.3V). Jika < 30000 → mV.
+- Plausibility check hanya diterapkan untuk field yang tersedia.
+
+Ketersediaan field (sesuai preferensi “Generic Fixed”):
+- Parser hanya mengisi field yang ada di baris CSV.
+- Field yang tidak ada dibiarkan apa adanya sehingga UI menampilkan “—” (tanpa estimasi).
+
+Port Serial yang digunakan:
+- Mega 2560: default mendengarkan di Serial1 (RX1 / PIN 19). Jika Secondary IO Speeduino dikonfigurasi di Serial3, pindah wiring ke RX3 (PIN 15) dan ganti pemanggilan `parser.begin(Serial3)` di kode.
+- Uno: memakai Serial (shared dengan Serial Monitor), pastikan tidak bentrok dengan monitor saat pengujian.
+
+Cara mengaktifkan Secondary IO di Speeduino (ringkas):
+1. Buka TunerStudio → Enable Secondary Serial IO Interface.
+2. Pilih mode Generic Fixed sesuai pilihan.
+3. Set baud rate: 115200, format 8N1.
+4. Pastikan daftar field sesuai atau sesuaikan mapping di firmware bila perlu.
+
 ### Parser State Machine
 
 ```
@@ -547,9 +594,9 @@ const char* PROGMEM state_names[] = { "NORMAL", "CAUTION", ... };
 
 **Data Not Updating**
 1. Check baud rate: 115200 baud
-2. Verify wiring: ECU TX → Mega RX1 (PIN 19)
-3. Check serial monitor: ada frame 0xAA yang masuk?
-4. Enable debug: `Serial.println(frames_received_);`
+2. Verify wiring: ECU TX → Mega RX1 (PIN 19) atau RX3 (PIN 15) jika pakai Serial3
+3. Cek apakah output Speeduino Binary (0xAA) atau Generic Fixed (CSV). Jika CSV, pastikan newline terkirim per baris.
+4. Enable debug: `parser.debugPrint();` untuk cek statistik parser.
 
 **Display Blank**
 1. Verify TFT wiring (16 pin data + 5 control)
@@ -561,6 +608,7 @@ const char* PROGMEM state_names[] = { "NORMAL", "CAUTION", ... };
 1. Recovery delay 2 seconds - normal jika repeatedly
 2. Check threshold values - mungkin terlalu strict
 3. Inspect sync counter: `ecu_data.syncLossCounter` increment normal?
+ 4. Untuk Generic Fixed, pastikan interval kirim CSV cukup stabil (tanpa jeda terlalu lama)
 
 **Performance/Lag**
 - Rendering rate capped di 50ms (20Hz) via `RENDER_INTERVAL_MS`
