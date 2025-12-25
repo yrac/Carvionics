@@ -1,0 +1,48 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "PlatformIO Build UNO",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"platformio",
+				"run",
+				"-e",
+				"uno"
+			],
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "PlatformIO Build UNO Verbose",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"platformio",
+				"run",
+				"-e",
+				"uno",
+				"-v"
+			],
+			"group": "build"
+		},
+		{
+			"label": "PlatformIO Build Mega",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"platformio",
+				"run",
+				"-e",
+				"megaatmega2560"
+			],
+			"group": "build"
+		}
+	]
+}
