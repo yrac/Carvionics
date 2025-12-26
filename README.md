@@ -19,6 +19,36 @@
 - [Troubleshooting](#troubleshooting)
  - [Secondary Serial Quick Guide](SECONDARY_SERIAL.md)
 
+### Stuck di "SYNCING" atau tidak muncul angka
+
+- **Cek port serial ECU**: Pastikan wiring sesuai port yang didengarkan firmware.
+  - Mega default: ECU TX → RX1 (PIN 19). Jika Speeduino Secondary IO memakai Serial3, gunakan RX3 (PIN 15) dan aktifkan build flag `USE_ECU_SERIAL3`.
+  - UNO: ECU TX → RX0 (PIN 0). Jangan buka Serial Monitor bersamaan.
+- **Enable Secondary IO (jika pakai CSV)**: Di TunerStudio, aktifkan Secondary Serial IO (Generic Fixed) dengan baud 115200, 8N1. Output CSV harus berakhir newline per update.
+- **Ground bersama**: ECU GND harus terhubung ke GND Arduino. Tanpa ground reference, sinyal serial bisa gagal saat PC tidak terhubung.
+- **Status Sync berbeda**: Beberapa firmware/versi Speeduino memakai bit status yang berbeda. Firmware ini memiliki fallback: setelah beberapa frame valid beruntun (RPM > 0), status akan dianggap "synced" untuk mencegah terjebak di SYNCING.
+- **Timeout & recovery**: `data_timeout_ms` dan `recovery_delay_ms` di `SyncManager` mempengaruhi transisi. Naikkan sedikit jika koneksi Anda memiliki jeda.
+
+Aktifkan Serial3 pada Mega (opsional):
+
+Tambahkan flag berikut di `platformio.ini` pada `[env:megaatmega2560]` → `build_flags`:
+
+```
+-DUSE_ECU_SERIAL3
+```
+
+Dengan ini, firmware akan mendengarkan Speeduino di `Serial3` (RX3/PIN 15).
+
+Aktifkan Serial0 pada Mega (jika ECU memakai TX0):
+
+Tambahkan flag berikut di `platformio.ini` pada `[env:megaatmega2560]` → `build_flags`:
+
+```
+-DUSE_ECU_SERIAL0
+```
+
+Dengan ini, firmware akan mendengarkan Speeduino di `Serial0` (RX0/PIN 0). Catatan: UART0 berbagi dengan USB (Serial Monitor/programming), hindari membuka Serial Monitor bersamaan.
+
 ---
 
 ## Overview

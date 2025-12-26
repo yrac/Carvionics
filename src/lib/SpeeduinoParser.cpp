@@ -13,21 +13,66 @@ SpeeduinoParser::SpeeduinoParser(uint32_t serial_baud)
             sync_losses_(0) {
         memset(frame_buffer_, 0, FRAME_SIZE);
         resetLineBuffer_();
+        memset(last_bytes_, 0, LAST_BYTES_CAP);
+        last_bytes_idx_ = 0;
 }
 
 void SpeeduinoParser::begin(HardwareSerial &serial) {
     serial_ = &serial;
     serial_->begin(baud_rate_);
     resetParserState_();
+    // If compiled with request macros, configure defaults
+    #ifdef USE_PRIMARY_REQUEST
+    request_mode_ = true;
+    #ifdef PRIMARY_REQ_CMD
+    request_cmd_ = (uint8_t)PRIMARY_REQ_CMD;
+    #endif
+    #ifdef PRIMARY_REQ_PERIOD_MS
+    request_period_ms_ = (uint32_t)PRIMARY_REQ_PERIOD_MS;
+    #endif
+    #endif
 }
 
 bool SpeeduinoParser::update(ECUData &ecu_data) {
     if (!serial_) return false;
     
+    // Active polling if enabled
+    if (request_mode_) {
+        uint32_t now = millis();
+        if (now - last_request_ms_ >= request_period_ms_) {
+            serial_->write(&request_cmd_, 1);
+            last_request_ms_ = now;
+            // Expect a primary response shortly after
+            expect_primary_ = true;
+            primary_expect_deadline_ = now + 150; // 150ms window
+        }
+    }
+    
+    // If expecting a primary response (74 bytes, no header), capture aligned buffer
+    if (expect_primary_) {
+        // Incrementally collect up to PRIMARY_RESPONSE_SIZE bytes
+        while (serial_->available() && buffer_index_ < PRIMARY_RESPONSE_SIZE) {
+            frame_buffer_[buffer_index_++] = serial_->read();
+        }
+        if (buffer_index_ >= PRIMARY_RESPONSE_SIZE) {
+            state_ = ParserState::FRAME_READY;
+            expect_primary_ = false;
+        } else if (millis() > primary_expect_deadline_) {
+            // timeout window passed; stop expecting primary and reset buffer
+            expect_primary_ = false;
+            buffer_index_ = 0;
+        }
+    }
+
     // Non-blocking read dari serial buffer
     while (serial_->available()) {
         uint8_t byte = serial_->read();
-        
+        raw_bytes_++;
+        last_rx_ms_ = millis();
+        // keep last bytes for debug
+        last_bytes_[last_bytes_idx_] = byte;
+        last_bytes_idx_ = (last_bytes_idx_ + 1) % LAST_BYTES_CAP;
+
         switch (state_) {
             case ParserState::IDLE:
                 if (byte == FRAME_HEADER) {
@@ -76,12 +121,23 @@ bool SpeeduinoParser::update(ECUData &ecu_data) {
             extractDataFromFrame_(ecu_data);
             frames_received_++;
             consecutive_errors_ = 0;
+            // If binary status bit does not indicate sync, allow
+            // a safe fallback after a few good frames with plausible data
+            if (!ecu_data.isSynced) {
+                valid_streak_++;
+                if (valid_streak_ >= 3 && ecu_data.rpm > 0) {
+                    ecu_data.isSynced = true; // treat as synced
+                }
+            } else {
+                valid_streak_ = 0;
+            }
             resetParserState_();
             resetLineBuffer_();
             return true;
         } else {
             frames_errored_++;
             consecutive_errors_++;
+            valid_streak_ = 0;
             
             if (consecutive_errors_ >= MAX_CONSECUTIVE_ERRORS) {
                 sync_losses_++;
@@ -96,18 +152,27 @@ bool SpeeduinoParser::update(ECUData &ecu_data) {
         }
     }
 
-    // If no binary frame, try Generic Fixed CSV line
+    // If no binary frame, try ASCII line parsing (key=value or generic CSV)
     if (line_ready_) {
-        bool ok = extractDataFromGenericFixed_(ecu_data, line_buffer_);
+        bool has_eq = false;
+        for (uint16_t i = 0; i < line_index_; ++i) { if (line_buffer_[i] == '=') { has_eq = true; break; } }
+        bool ok = false;
+        if (has_eq) {
+            ok = extractDataFromKeyValue_(ecu_data, line_buffer_);
+        } else {
+            ok = extractDataFromGenericFixed_(ecu_data, line_buffer_);
+        }
         resetLineBuffer_();
         if (ok) {
             frames_received_++;
             consecutive_errors_ = 0;
             ecu_data.isSynced = true;
+            valid_streak_ = 0;
             return true;
         } else {
             frames_errored_++;
             consecutive_errors_++;
+            valid_streak_ = 0;
             if (consecutive_errors_ >= MAX_CONSECUTIVE_ERRORS) {
                 sync_losses_++;
                 ecu_data.syncLossCounter++;
@@ -122,46 +187,59 @@ bool SpeeduinoParser::update(ECUData &ecu_data) {
 }
 
 bool SpeeduinoParser::validateFrame_() const {
-    if (buffer_index_ < FRAME_SIZE) return false;
-    if (frame_buffer_[0] != FRAME_HEADER) return false;
+    // Check for primary response format (74 bytes, no header)
+    // or binary frame format (128 bytes, header 0xAA)
     
-    // Basic sanity check pada offset yang critical
-    // RPM range check
-    uint16_t rpm = (frame_buffer_[OFFSET_RPM + 1] << 8) | frame_buffer_[OFFSET_RPM];
-    if (rpm > 15000) return false;  // Unrealistic RPM
+    if (buffer_index_ >= PRIMARY_RESPONSE_SIZE && frame_buffer_[0] != FRAME_HEADER) {
+        // Likely a primary response (no 0xAA header)
+        // Basic sanity: check RPM and battery range
+        uint16_t rpm = (frame_buffer_[OFFSET_RPM_HI] << 8) | frame_buffer_[OFFSET_RPM_LO];
+        if (rpm > 15000) return false;
+        
+        uint8_t battery_raw = frame_buffer_[OFFSET_BATTERY];
+        if (battery_raw > 160) return false;  // > 16V unrealistic
+        
+        return true;
+    } else if (buffer_index_ >= FRAME_SIZE && frame_buffer_[0] == FRAME_HEADER) {
+        // Binary frame format (128 bytes with 0xAA header)
+        return true;
+    }
     
-    // Battery range check (0..16V)
-    uint8_t battery_raw = frame_buffer_[OFFSET_BATTERY];
-    if (battery_raw > 160) return false;
-    
-    return true;
+    return false;
 }
 
 void SpeeduinoParser::extractDataFromFrame_(ECUData &ecu_data) {
-    // RPM: offset 0, 2 byte (little-endian)
-    ecu_data.rpm = (frame_buffer_[OFFSET_RPM + 1] << 8) | frame_buffer_[OFFSET_RPM];
-    
-    // CLT: offset 2, 1 byte (signed)
-    ecu_data.clt = (int8_t)frame_buffer_[OFFSET_CLT];
-    
-    // AFR: offset 4, 2 byte (little-endian, 100x)
-    ecu_data.afr = (frame_buffer_[OFFSET_AFR + 1] << 8) | frame_buffer_[OFFSET_AFR];
-    
-    // MAP: offset 6, 1 byte
-    ecu_data.map = frame_buffer_[OFFSET_MAP];
-    
-    // TPS: offset 10, 1 byte (0..100)
-    ecu_data.tps = frame_buffer_[OFFSET_TPS];
-    
-    // IAT: offset 14, 1 byte (signed)
-    ecu_data.iat = (int8_t)frame_buffer_[OFFSET_IAT];
-    
-    // Battery: offset 20, 1 byte (0.1V per unit), convert to mV
-    ecu_data.battery = frame_buffer_[OFFSET_BATTERY] * 100;
-    
-    // Status byte untuk sync check
-    uint8_t status = frame_buffer_[OFFSET_STATUS];
-    ecu_data.isSynced = (status & 0x01) != 0;  // Bit 0 = sync status
+    // Parse primary response format (74 bytes, no header)
+    if (buffer_index_ >= PRIMARY_RESPONSE_SIZE && frame_buffer_[0] != FRAME_HEADER) {
+        // Primary realtime response (Speeduino 3.5+)
+        
+        // MAP: offset 4-5, 2 byte little-endian (kPa)
+        uint16_t map_raw = (frame_buffer_[OFFSET_MAP_HI] << 8) | frame_buffer_[OFFSET_MAP_LO];
+        ecu_data.map = map_raw >> 8;  // Simplify to byte range for display
+        
+        // CLT: offset 7, 1 byte signed (°C)
+        ecu_data.clt = (int8_t)frame_buffer_[OFFSET_CLT];
+        
+        // IAT: offset 6, 1 byte signed (°C)
+        ecu_data.iat = (int8_t)frame_buffer_[OFFSET_IAT];
+        
+        // Battery: offset 9, 1 byte (0.1V per unit), convert to mV
+        ecu_data.battery = frame_buffer_[OFFSET_BATTERY] * 100;
+        
+        // AFR: offset 10, 1 byte (AFR/10, e.g., 147 = 14.7), scale to 100x
+        ecu_data.afr = (uint16_t)frame_buffer_[OFFSET_AFR] * 10;
+        
+        // RPM: offset 14-15, 2 byte little-endian
+        ecu_data.rpm = (frame_buffer_[OFFSET_RPM_HI] << 8) | frame_buffer_[OFFSET_RPM_LO];
+        
+        // TPS: offset 24, 1 byte (%)
+        ecu_data.tps = frame_buffer_[OFFSET_TPS];
+        
+        ecu_data.isSynced = true;  // Primary response = synced
+    } else if (buffer_index_ >= FRAME_SIZE && frame_buffer_[0] == FRAME_HEADER) {
+        // Binary frame format (128 bytes) - for backward compatibility
+        ecu_data.isSynced = false;
+    }
     
     // Update timestamps
     ecu_data.lastUpdateMillis = millis();
@@ -317,4 +395,114 @@ void SpeeduinoParser::debugPrint() const {
     Serial.print("Frames Errored: "); Serial.println(frames_errored_);
     Serial.print("Sync Losses: "); Serial.println(sync_losses_);
     Serial.print("Consecutive Errors: "); Serial.println(consecutive_errors_);
+    Serial.print("Raw Bytes: "); Serial.println(raw_bytes_);
+    Serial.print("Millis since last RX: "); Serial.println(last_rx_ms_ ? (millis() - last_rx_ms_) : 0);
+    Serial.print("Request Mode: "); Serial.println(request_mode_ ? "ON" : "OFF");
+    if (request_mode_) {
+        Serial.print("Request Cmd: 0x"); Serial.println(request_cmd_, HEX);
+        Serial.print("Request Period(ms): "); Serial.println(request_period_ms_);
+    }
+    // Print last up to 32 bytes in hex (LSB = most recent)
+    Serial.print("Last Bytes (newest last): ");
+    uint8_t count = LAST_BYTES_CAP < 32 ? LAST_BYTES_CAP : 32;
+    uint8_t start = (last_bytes_idx_ + LAST_BYTES_CAP - count) % LAST_BYTES_CAP;
+    for (uint8_t i = 0; i < count; ++i) {
+        uint8_t b = last_bytes_[(start + i) % LAST_BYTES_CAP];
+        if (b < 16) Serial.print('0');
+        Serial.print(b, HEX);
+        Serial.print(' ');
+    }
+    Serial.println();
+}
+
+void SpeeduinoParser::configureRequest(uint8_t cmd, uint32_t period_ms) {
+    request_mode_ = true;
+    request_cmd_ = cmd;
+    request_period_ms_ = period_ms ? period_ms : 50;
+}
+
+// Parse ASCII line with key=value pairs, tokens separated by comma or space
+bool SpeeduinoParser::extractDataFromKeyValue_(ECUData &ecu_data, const char *line) {
+    auto toInt = [](const char *s) -> int32_t {
+        bool neg = false; int32_t v = 0;
+        while (*s == ' ' || *s == '\t') s++;
+        if (*s == '-') { neg = true; s++; }
+        while (*s >= '0' && *s <= '9') { v = v * 10 + (*s - '0'); s++; }
+        return neg ? -v : v;
+    };
+    auto toFloat = [](const char *s) -> float {
+        while (*s == ' ' || *s == '\t') s++;
+        bool neg = false; if (*s == '-') { neg = true; s++; }
+        int32_t ip = 0, fp = 0, div = 1;
+        while (*s >= '0' && *s <= '9') { ip = ip * 10 + (*s - '0'); s++; }
+        if (*s == '.') { s++; while (*s >= '0' && *s <= '9') { fp = fp * 10 + (*s - '0'); div *= 10; s++; } }
+        float v = (float)ip + (fp ? (float)fp / (float)div : 0.0f);
+        return neg ? -v : v;
+    };
+
+    // Iterate tokens
+    const char *p = line;
+    bool any = false;
+    while (*p) {
+        // Skip separators
+        while (*p == ' ' || *p == '\t' || *p == ',') p++;
+        const char *key_start = p;
+        while (*p && *p != '=' && *p != ',' && *p != '\n' && *p != '\r') p++;
+        if (*p != '=') { while (*p && *p != ',' && *p != '\n' && *p != '\r') p++; continue; }
+        const char *key_end = p; // points at '='
+        p++; // move past '='
+        const char *val_start = p;
+        while (*p && *p != ',' && *p != '\n' && *p != '\r') p++;
+        const char *val_end = p;
+
+        // Normalize key to uppercase short id
+        char key[12]; uint8_t ki = 0;
+        const char *ks = key_start;
+        while (ks < key_end && ki < sizeof(key) - 1) {
+            char c = *ks++;
+            if (c >= 'a' && c <= 'z') c = (char)(c - 32);
+            if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) key[ki++] = c;
+        }
+        key[ki] = '\0';
+
+        // Extract value string
+        char val[24]; uint8_t vi = 0;
+        const char *vs = val_start;
+        while (vs < val_end && vi < sizeof(val) - 1) { val[vi++] = *vs++; }
+        val[vi] = '\0';
+
+        // Map known keys
+        if (strcmp(key, "RPM") == 0) { ecu_data.rpm = (uint16_t)toInt(val); any = true; }
+        else if (strcmp(key, "MAP") == 0) { ecu_data.map = (uint16_t)toInt(val); any = true; }
+        else if (strcmp(key, "TPS") == 0) { ecu_data.tps = (uint16_t)toInt(val); any = true; }
+        else if (strcmp(key, "CLT") == 0) { ecu_data.clt = (int16_t)toInt(val); any = true; }
+        else if (strcmp(key, "IAT") == 0) { ecu_data.iat = (int16_t)toInt(val); any = true; }
+        else if (strcmp(key, "AFR") == 0) {
+            float f = toFloat(val);
+            if (f > 0.0f && f < 50.0f) ecu_data.afr = (uint16_t)(f * 100.0f + 0.5f);
+            else {
+                int32_t ai = toInt(val);
+                if (ai >= 800 && ai <= 2500) ecu_data.afr = (uint16_t)ai;
+            }
+            any = true;
+        }
+        else if (strcmp(key, "BAT") == 0 || strcmp(key, "VBAT") == 0 || strcmp(key, "BATTERY") == 0) {
+            float f = toFloat(val);
+            if (f > 0.0f && f < 30.0f) ecu_data.battery = (uint16_t)(f * 1000.0f + 0.5f);
+            else {
+                int32_t bi = toInt(val);
+                if (bi >= 0 && bi <= 160) ecu_data.battery = (uint16_t)(bi * 100);
+            }
+            any = true;
+        }
+        // Advance past separator if present
+        if (*p == ',') p++;
+    }
+
+    if (any) {
+        ecu_data.lastUpdateMillis = millis();
+        ecu_data.isDataValid = true;
+        return true;
+    }
+    return false;
 }

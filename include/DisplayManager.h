@@ -80,6 +80,9 @@ public:
     // Helper functions untuk UI rendering
     void drawBox(uint16_t x, uint16_t y, uint16_t w, uint16_t h, Color border, Color fill);
     void drawParameterBox(uint16_t x, uint16_t y, const char *label, const char *value, Color fg);
+
+    // Simple startup diagnostic: draw color bars to verify TFT
+    void drawTestPattern();
     
     // Get display object for custom drawing
     MCUFRIEND_kbv* getTFT() { return &tft_; }

@@ -6,7 +6,15 @@ DisplayManager::DisplayManager()
 
 bool DisplayManager::begin() {
     uint16_t ID = tft_.readID();
-    // Inisialisasi generic untuk berbagai ID panel
+    Serial.print("[TFT] readID = 0x"); Serial.println(ID, HEX);
+
+    // Beberapa shield bersifat write-only dan mengembalikan ID tidak valid.
+    // Pakai fallback umum ILI9341 jika ID terdeteksi tidak masuk akal.
+    if (ID == 0x0000 || ID == 0xFFFF || ID == 0xD3D3) {
+        Serial.println("[TFT] Unknown/Write-only ID, forcing 0x9341 (ILI9341)");
+        ID = 0x9341;
+    }
+
     tft_.begin(ID);
     tft_.setRotation(1);  // Landscape 320x240
     initialized_ = true;
@@ -120,4 +128,14 @@ void DisplayManager::drawParameterBox(uint16_t x, uint16_t y, const char *label,
     print(label);
     setCursor(x, y + 10);
     print(value);
+}
+
+void DisplayManager::drawTestPattern() {
+    if (!initialized_) return;
+
+    // Tiga bar warna utama untuk memastikan GRAM menulis dengan benar
+    uint16_t w = SCREEN_WIDTH / 3;
+    fillRect(0, 0, w, SCREEN_HEIGHT, Color::RED);
+    fillRect(w, 0, w, SCREEN_HEIGHT, Color::GREEN);
+    fillRect(2 * w, 0, SCREEN_WIDTH - 2 * w, SCREEN_HEIGHT, Color::BLUE);
 }
