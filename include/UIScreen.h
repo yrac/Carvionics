@@ -66,6 +66,25 @@ public:
 
 private:
     DisplayManager &display_;
+
+    // Smoothed display values to make transitions more seamless
+    struct Smooth {
+        bool initialized = false;
+        float rpm = 0;
+        float map = 0;
+        float clt = 0;
+        float iat = 0;
+        float afr_x100 = 0; // store AFR scaled by 100
+        float tps = 0;
+        float battery = 0; // in mV
+    } smooth_;
+
+    // Previous value strings per cell to skip unnecessary redraws
+    // Order: [RPM, MAP, CLT, IAT, AFR, TPS]
+    char prevVals_[6][16] = {{0}};
+
+    void updateSmooth_(const ECUData &ecu);
+    static float lerp_(float from, float to, float alpha);
     
     // Layout constants (pixel coordinates) — 3x2 grid sama rata (six-pack avionics)
     static constexpr uint16_t HEADER_Y = 0;
@@ -99,6 +118,10 @@ private:
                        DisplayManager::Color valueColor,
                        DisplayManager::Color borderColor = DisplayManager::Color::LIGHT_GRAY,
                        uint8_t valueSize = 2);
+    void drawGridValueArea_(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+                            const char* value,
+                            DisplayManager::Color valueColor,
+                            uint8_t valueSize);
     const char* headerEcuStatusText_(const ECUData &ecu_data, const SyncManager &sync_mgr) const;
 
     // State-driven color helpers

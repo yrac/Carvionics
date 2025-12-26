@@ -112,6 +112,38 @@ Serial (Speeduino):
   ECU TX → Mega RX1 (PIN 19) [default]
   ECU GND → GND
   (Opsional) Jika Speeduino memakai Secondary IO di Serial3, pindah ke Mega RX3 (PIN 15) dan sesuaikan port di kode
+
+Catatan Shield vs Breakout:
+- Jika Anda menggunakan shield MCUFRIEND 2.4" untuk Mega/UNO, pin sudah dirutekan oleh shield dan biasanya tidak perlu wiring manual. Cukup pasang shield ke board.
+- Mapping di atas ditujukan untuk modul/breakout paralel 8-bit. Library `MCUFRIEND_kbv` akan mendeteksi controller (ILI93xx, dsb.) dan menggunakan jalur default.
+
+### Wiring (Arduino Uno)
+
+Untuk shield MCUFRIEND yang menempel langsung ke UNO, tidak diperlukan wiring manual (shield menghubungkan pin kontrol/data secara otomatis). Jika memakai breakout TFT paralel 8-bit, ikuti mapping pabrik breakout Anda atau adaptor yang sesuai.
+
+Serial (Speeduino):
+```
+ECU TX  → UNO RX0 (PIN 0)
+ECU GND → GND
+Baud    → 115200 (8N1)
+```
+
+Port Serial di firmware:
+- UNO menggunakan `Serial` (berbagi dengan Serial Monitor). Saat pengujian, pastikan tidak membuka Serial Monitor bersamaan agar tidak bentrok.
+- Mega menggunakan `Serial1` (default RX1/PIN 19). Dapat diubah ke `Serial3` (RX3/PIN 15) jika diperlukan.
+
+Referensi tambahan:
+- Lihat [SECONDARY_SERIAL.md](SECONDARY_SERIAL.md) untuk pengaturan Generic Fixed (CSV) dari Speeduino.
+- Jika Anda memakai varian SPI TFT (bukan paralel), lihat [WIRING_GUIDE.md](WIRING_GUIDE.md).
+
+#### Skema Serial Speeduino ↔ Arduino
+
+![Speeduino to Arduino Serial Wiring](docs/schematics/speeduino-to-arduino.svg)
+
+Skema menunjukkan koneksi inti:
+- ECU TX → Arduino RX (Mega: RX1/PIN 19, opsi RX3/PIN 15; UNO: RX0/PIN 0)
+- ECU GND → Arduino GND (ground bersama)
+- Baud 115200, 8N1. Pastikan Speeduino dan firmware seragam.
 ```
 
 ---

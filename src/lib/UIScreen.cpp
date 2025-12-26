@@ -50,6 +50,14 @@ void UIScreen::render(const ECUData &ecu_data,
     }
     
     // Normal rendering dengan dirty-flag optimization
+    updateSmooth_(ecu_data);
+    // If fullscreen was dirty (e.g., coming from SYNC_LOSS/RECOVERY/WAIT/BOOT),
+    // ensure we force values to redraw by clearing previous cache.
+    if (ui_state.isSliceDirty(UIStateMachine::UISlice::FULL_SCREEN)) {
+        for (int i = 0; i < 6; ++i) {
+            prevVals_[i][0] = '\0';
+        }
+    }
     if (ui_state.isSliceDirty(UIStateMachine::UISlice::HEADER)) {
         renderHeader_(ecu_data, sync_mgr, ui_state);
     }
@@ -128,35 +136,46 @@ void UIScreen::renderHeader_(const ECUData &ecu_data,
 void UIScreen::renderRPMField_(const ECUData &ecu_data,
                               const SyncManager &sync_mgr) {
     // Row-1, Col-1: RPM (cell pertama, atas)
-    char rpmStr[16]; snprintf(rpmStr, sizeof(rpmStr), "%d", ecu_data.rpm);
+    int rpmDisp = (int)(smooth_.rpm + 0.5f);
+    char rpmStr[16]; snprintf(rpmStr, sizeof(rpmStr), "%d", rpmDisp);
     DisplayManager::Color valCol = valueColorForState_(sync_mgr.getState());
     if (sync_mgr.getState() == SyncManager::SyncState::NO_DATA || !ecu_data.isDataValid) {
         strcpy(rpmStr, "--");
         valCol = DisplayManager::Color::AMBER;
     }
-    drawGridCell_(0, GRID_ROW1_Y, CELL_W, GRID_ROW1_H,
-                  "RPM", rpmStr,
-                  DisplayManager::Color::WHITE,
-                  valCol,
-                  borderColorForState_(sync_mgr.getState()),
-                  3);
+    // Skip redraw if unchanged
+    if (strcmp(prevVals_[0], rpmStr) != 0) {
+        strncpy(prevVals_[0], rpmStr, sizeof(prevVals_[0]) - 1);
+        prevVals_[0][sizeof(prevVals_[0]) - 1] = '\0';
+        drawGridCell_(0, GRID_ROW1_Y, CELL_W, GRID_ROW1_H,
+                      "RPM", rpmStr,
+                      DisplayManager::Color::WHITE,
+                      valCol,
+                      borderColorForState_(sync_mgr.getState()),
+                      3);
+    }
 }
 
 void UIScreen::renderEngineCore_(const ECUData &ecu_data,
                                 const SyncManager &sync_mgr) {
     // Row-1, Col-2: MAP
-    char mapStr[16]; snprintf(mapStr, sizeof(mapStr), "%d", ecu_data.map);
+    int mapDisp = (int)(smooth_.map + 0.5f);
+    char mapStr[16]; snprintf(mapStr, sizeof(mapStr), "%d", mapDisp);
     DisplayManager::Color valCol = valueColorForState_(sync_mgr.getState());
     if (sync_mgr.getState() == SyncManager::SyncState::NO_DATA || !ecu_data.isDataValid) {
         strcpy(mapStr, "--");
         valCol = DisplayManager::Color::AMBER;
     }
-    drawGridCell_(CELL_W, GRID_ROW1_Y, CELL_W, GRID_ROW1_H,
-                  "MAP", mapStr,
-                  DisplayManager::Color::WHITE,
-                  valCol,
-                  borderColorForState_(sync_mgr.getState()),
-                  3);
+    if (strcmp(prevVals_[1], mapStr) != 0) {
+        strncpy(prevVals_[1], mapStr, sizeof(prevVals_[1]) - 1);
+        prevVals_[1][sizeof(prevVals_[1]) - 1] = '\0';
+        drawGridCell_(CELL_W, GRID_ROW1_Y, CELL_W, GRID_ROW1_H,
+                      "MAP", mapStr,
+                      DisplayManager::Color::WHITE,
+                      valCol,
+                      borderColorForState_(sync_mgr.getState()),
+                      3);
+    }
 
     // Row-1, Col-3: CLT
     char cltStr[16];
@@ -164,32 +183,41 @@ void UIScreen::renderEngineCore_(const ECUData &ecu_data,
         strcpy(cltStr, "--");
         valCol = DisplayManager::Color::AMBER;
     } else {
-        annotateClt_(cltStr, sizeof(cltStr), ecu_data.clt, sync_mgr);
+        annotateClt_(cltStr, sizeof(cltStr), (int16_t)(smooth_.clt + 0.5f), sync_mgr);
         valCol = valueColorForState_(sync_mgr.getState());
     }
-    drawGridCell_(CELL_W * 2, GRID_ROW1_Y, CELL_W, GRID_ROW1_H,
-                  "CLT", cltStr,
-                  DisplayManager::Color::WHITE,
-                  valCol,
-                  borderColorForState_(sync_mgr.getState()),
-                  3);
+    if (strcmp(prevVals_[2], cltStr) != 0) {
+        strncpy(prevVals_[2], cltStr, sizeof(prevVals_[2]) - 1);
+        prevVals_[2][sizeof(prevVals_[2]) - 1] = '\0';
+        drawGridCell_(CELL_W * 2, GRID_ROW1_Y, CELL_W, GRID_ROW1_H,
+                      "CLT", cltStr,
+                      DisplayManager::Color::WHITE,
+                      valCol,
+                      borderColorForState_(sync_mgr.getState()),
+                      3);
+    }
 }
 
 void UIScreen::renderControlData_(const ECUData &ecu_data,
                                  const SyncManager &sync_mgr) {
     // Row-2, Col-1: IAT
-    char iatStr[16]; snprintf(iatStr, sizeof(iatStr), "%d", ecu_data.iat);
+    int iatDisp = (int)(smooth_.iat + 0.5f);
+    char iatStr[16]; snprintf(iatStr, sizeof(iatStr), "%d", iatDisp);
     DisplayManager::Color valCol = valueColorForState_(sync_mgr.getState());
     if (!ecu_data.isDataValid) {
         strcpy(iatStr, "--");
         valCol = DisplayManager::Color::AMBER;
     }
-    drawGridCell_(0, GRID_ROW2_Y, CELL_W, GRID_ROW2_H,
-                  "IAT", iatStr,
-                  DisplayManager::Color::WHITE,
-                  valCol,
-                  borderColorForState_(sync_mgr.getState()),
-                  3);
+    if (strcmp(prevVals_[3], iatStr) != 0) {
+        strncpy(prevVals_[3], iatStr, sizeof(prevVals_[3]) - 1);
+        prevVals_[3][sizeof(prevVals_[3]) - 1] = '\0';
+        drawGridCell_(0, GRID_ROW2_Y, CELL_W, GRID_ROW2_H,
+                      "IAT", iatStr,
+                      DisplayManager::Color::WHITE,
+                      valCol,
+                      borderColorForState_(sync_mgr.getState()),
+                      3);
+    }
 
     // Row-2, Col-2: AFR
     char afrStr[16];
@@ -197,29 +225,38 @@ void UIScreen::renderControlData_(const ECUData &ecu_data,
         strcpy(afrStr, "--");
         valCol = DisplayManager::Color::AMBER;
     } else {
-        annotateAfr_(afrStr, sizeof(afrStr), ecu_data.afr, sync_mgr);
+        annotateAfr_(afrStr, sizeof(afrStr), (uint16_t)(smooth_.afr_x100 + 0.5f), sync_mgr);
         valCol = valueColorForState_(sync_mgr.getState());
     }
-    drawGridCell_(CELL_W, GRID_ROW2_Y, CELL_W, GRID_ROW2_H,
-                  "AFR", afrStr,
-                  DisplayManager::Color::WHITE,
-                  valCol,
-                  borderColorForState_(sync_mgr.getState()),
-                  3);
+    if (strcmp(prevVals_[4], afrStr) != 0) {
+        strncpy(prevVals_[4], afrStr, sizeof(prevVals_[4]) - 1);
+        prevVals_[4][sizeof(prevVals_[4]) - 1] = '\0';
+        drawGridCell_(CELL_W, GRID_ROW2_Y, CELL_W, GRID_ROW2_H,
+                      "AFR", afrStr,
+                      DisplayManager::Color::WHITE,
+                      valCol,
+                      borderColorForState_(sync_mgr.getState()),
+                      3);
+    }
 
     // Row-2, Col-3: TPS
-    char tpsStr[16]; snprintf(tpsStr, sizeof(tpsStr), "%d", ecu_data.tps);
+    int tpsDisp = (int)(smooth_.tps + 0.5f);
+    char tpsStr[16]; snprintf(tpsStr, sizeof(tpsStr), "%d", tpsDisp);
     valCol = valueColorForState_(sync_mgr.getState());
     if (!ecu_data.isDataValid) {
         strcpy(tpsStr, "--");
         valCol = DisplayManager::Color::AMBER;
     }
-    drawGridCell_(CELL_W * 2, GRID_ROW2_Y, CELL_W, GRID_ROW2_H,
-                  "TPS", tpsStr,
-                  DisplayManager::Color::WHITE,
-                  valCol,
-                  borderColorForState_(sync_mgr.getState()),
-                  3);
+    if (strcmp(prevVals_[5], tpsStr) != 0) {
+        strncpy(prevVals_[5], tpsStr, sizeof(prevVals_[5]) - 1);
+        prevVals_[5][sizeof(prevVals_[5]) - 1] = '\0';
+        drawGridCell_(CELL_W * 2, GRID_ROW2_Y, CELL_W, GRID_ROW2_H,
+                      "TPS", tpsStr,
+                      DisplayManager::Color::WHITE,
+                      valCol,
+                      borderColorForState_(sync_mgr.getState()),
+                      3);
+    }
 }
 
 void UIScreen::renderFooter_(const ECUData &ecu_data,
@@ -307,7 +344,9 @@ void UIScreen::drawGridCell_(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
                              uint8_t valueSize) {
     // Clean avionics style: no borders, just spacing and color coding
     DisplayManager::Color fill = DisplayManager::Color::BLACK;
-    display_.fillRect(x, y, w, h, fill);
+    // Reduce flicker: clear only the value area, keep label area intact
+    const uint16_t labelAreaH = 20; // approx height for label line
+    display_.fillRect(x, y + labelAreaH, w, (h > labelAreaH ? h - labelAreaH : 0), fill);
 
     // Label (kiri atas, kecil)
     display_.setFont(nullptr);
@@ -365,6 +404,81 @@ void UIScreen::drawGridCell_(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
     display_.setCursor(vx, vy);
     display_.print(value);
 #endif
+}
+
+// Draw only the value area (used for potential future granular updates)
+void UIScreen::drawGridValueArea_(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+                                  const char* value,
+                                  DisplayManager::Color valueColor,
+                                  uint8_t valueSize) {
+    DisplayManager::Color fill = DisplayManager::Color::BLACK;
+    const uint16_t labelAreaH = 20;
+    display_.fillRect(x, y + labelAreaH, w, (h > labelAreaH ? h - labelAreaH : 0), fill);
+#if USE_FREEFONT
+    const GFXfont *font = &FreeSansBold12pt7b;
+    uint16_t len = strlen(value);
+    if (len <= 3 && w >= 100) font = &FreeSansBold18pt7b;
+    else if (len <= 6) font = &FreeSansBold12pt7b;
+    else font = &FreeSans9pt7b;
+    display_.setFont(font);
+    display_.setTextColor(valueColor, fill);
+    int16_t bx, by; uint16_t bw, bh;
+    display_.getTFT()->getTextBounds(value, 0, 0, &bx, &by, &bw, &bh);
+    uint16_t vx = x + (w > bw ? (w - bw) / 2 : 2);
+    uint16_t vy = y + h / 2 + bh / 2;
+    display_.setCursor(vx, vy);
+    display_.print(value);
+    display_.setFont(nullptr);
+#else
+    uint8_t finalSize = valueSize;
+    uint16_t len = strlen(value);
+    uint8_t maxByW = (len > 0) ? (uint8_t)(w / (6 * len)) : finalSize;
+    uint8_t maxByH = (uint8_t)(h / 8);
+    if (maxByW == 0) maxByW = 1; if (maxByH == 0) maxByH = 1;
+    if (finalSize > maxByW) finalSize = maxByW; if (finalSize > maxByH) finalSize = maxByH;
+    display_.setTextSize(finalSize);
+    display_.setTextColor(valueColor, fill);
+    uint16_t charW = 6 * finalSize; uint16_t charH = 8 * finalSize;
+    uint16_t textW = len * charW;
+    uint16_t vx = x + (w > textW ? (w - textW) / 2 : 2);
+    uint16_t vy = y + (h > charH ? (h - charH) / 2 : 2);
+    display_.setCursor(vx, vy);
+    display_.print(value);
+#endif
+}
+
+// ===== Smoothing helpers =====
+void UIScreen::updateSmooth_(const ECUData &ecu) {
+    // Parameter-specific smoothing factors (higher = faster response)
+    const float alpha_rpm = 0.35f;
+    const float alpha_map = 0.30f;
+    const float alpha_clt = 0.15f;
+    const float alpha_iat = 0.15f;
+    const float alpha_afr = 0.25f;
+    const float alpha_tps = 0.35f;
+    const float alpha_bat = 0.10f;
+    if (!smooth_.initialized) {
+        smooth_.rpm = ecu.rpm;
+        smooth_.map = ecu.map;
+        smooth_.clt = ecu.clt;
+        smooth_.iat = ecu.iat;
+        smooth_.afr_x100 = ecu.afr;
+        smooth_.tps = ecu.tps;
+        smooth_.battery = ecu.battery;
+        smooth_.initialized = true;
+        return;
+    }
+    smooth_.rpm = lerp_(smooth_.rpm, (float)ecu.rpm, alpha_rpm);
+    smooth_.map = lerp_(smooth_.map, (float)ecu.map, alpha_map);
+    smooth_.clt = lerp_(smooth_.clt, (float)ecu.clt, alpha_clt);
+    smooth_.iat = lerp_(smooth_.iat, (float)ecu.iat, alpha_iat);
+    smooth_.afr_x100 = lerp_(smooth_.afr_x100, (float)ecu.afr, alpha_afr);
+    smooth_.tps = lerp_(smooth_.tps, (float)ecu.tps, alpha_tps);
+    smooth_.battery = lerp_(smooth_.battery, (float)ecu.battery, alpha_bat);
+}
+
+float UIScreen::lerp_(float from, float to, float alpha) {
+    return from + alpha * (to - from);
 }
 
 const char* UIScreen::headerEcuStatusText_(const ECUData &ecu_data, const SyncManager &sync_mgr) const {
@@ -584,7 +698,7 @@ void UIScreen::annotateAfr_(char *buf, size_t bufSize, uint16_t afr, const SyncM
     float afr_val = afr / 100.0f;
     char tmp[16];
     // Keep one decimal for compactness (e.g., 14.7)
-    snprintf(tmp, sizeof(tmp), "%.1f", afr_val);
+    snprintf(tmp, sizeof(tmp), "%.1f", (double)afr_val);
 
     // Determine severity
     bool caution = false;
